@@ -1927,27 +1927,95 @@
     state = defaultState();
     currentFileName = state.settings.diagramFileName || 'event-flow-designer.json';
     const comps = [
-      ['Frontend', 40, 80, '#e0f2fe'], ['Order Service', 340, 80, '#ecfeff'], ['Inventory Service', 640, 60, '#f0fdf4'], ['Payment Service', 640, 250, '#fff7ed']
-    ].map(([name,x,y,fill], i) => ({ id:id('cmp'), name, shape:'roundedRectangle', x, y, width:190, height:92, fillColor:fill, borderColor:'#334155', textColor:'#0f172a', borderWidth:2, zIndex:i+1 }));
+      {
+        id:id('cmp'), name:'Web UI', shape:'roundedRectangle', x:84, y:196, width:150, height:84,
+        fillColor:'#dbeafe', borderColor:'#2563eb', textColor:'#0f172a', borderWidth:2, zIndex:10
+      },
+      {
+        id:id('cmp'), name:'Order Service', shape:'roundedRectangle', x:380, y:104, width:188, height:88,
+        fillColor:'#ecfeff', borderColor:'#0891b2', textColor:'#0f172a', borderWidth:2, zIndex:12
+      },
+      {
+        id:id('cmp'), name:'Inventory Service', shape:'roundedRectangle', x:830, y:88, width:192, height:88,
+        fillColor:'#dcfce7', borderColor:'#16a34a', textColor:'#0f172a', borderWidth:2, zIndex:13
+      },
+      {
+        id:id('cmp'), name:'Payment Service', shape:'roundedRectangle', x:830, y:256, width:192, height:88,
+        fillColor:'#ffedd5', borderColor:'#ea580c', textColor:'#0f172a', borderWidth:2, zIndex:14
+      },
+      {
+        id:id('cmp'), name:'Notification Service', shape:'roundedRectangle', x:380, y:284, width:186, height:88,
+        fillColor:'#f3e8ff', borderColor:'#9333ea', textColor:'#0f172a', borderWidth:2, zIndex:15
+      }
+    ];
     state.components = comps;
     const byName = Object.fromEntries(comps.map(c => [c.name, c.id]));
+
     const defs = [
-      ['Frontend','Order Service','Submit Order','Validate order and reserve order ID','arc'],
-      ['Order Service','Inventory Service','Reserve Stock','Check availability and reserve items','arc'],
-      ['Inventory Service','Order Service','Stock Reserved','Update order with reserved stock','arc'],
-      ['Order Service','Payment Service','Payment Request','Authorize payment','angular'],
-      ['Payment Service','Order Service','Payment Authorized','Confirm order and publish confirmation','angular']
+      {
+        source:'Web UI', target:'Order Service', message:'Submit Order', action:'Validate order and create a new order',
+        color:'#2563eb', sourcePortId:makePortId('right', 0.5), targetPortId:makePortId('left', 0.5),
+        controlPoint:{ x:286, y:212 }
+      },
+      {
+        source:'Order Service', target:'Inventory Service', message:'Reserve Stock', action:'Check availability and reserve items',
+        color:'#16a34a', sourcePortId:makePortId('right', 0.34), targetPortId:makePortId('left', 0.34),
+        controlPoint:{ x:692, y:96 }
+      },
+      {
+        source:'Inventory Service', target:'Order Service', message:'Stock Reserved', action:'Update the order with the reservation result',
+        color:'#0f766e', sourcePortId:makePortId('left', 0.72), targetPortId:makePortId('right', 0.7),
+        controlPoint:{ x:700, y:220 }
+      },
+      {
+        source:'Order Service', target:'Payment Service', message:'Payment Request', action:'Authorize the payment',
+        color:'#d97706', sourcePortId:makePortId('right', 0.84), targetPortId:makePortId('left', 0.28),
+        controlPoint:{ x:706, y:232 }
+      },
+      {
+        source:'Payment Service', target:'Order Service', message:'Payment Authorized', action:'Mark the order as paid',
+        color:'#b45309', sourcePortId:makePortId('left', 0.7), targetPortId:makePortId('right', 0.96),
+        controlPoint:{ x:700, y:360 }
+      },
+      {
+        source:'Order Service', target:'Notification Service', message:'Send Confirmation', action:'Create and dispatch the customer confirmation',
+        color:'#9333ea', sourcePortId:makePortId('bottom', 0.42), targetPortId:makePortId('top', 0.56),
+        controlPoint:{ x:480, y:246 }
+      },
+      {
+        source:'Notification Service', target:'Web UI', message:'Confirmation Ready', action:'Show the order confirmation to the customer',
+        color:'#7c3aed', sourcePortId:makePortId('left', 0.48), targetPortId:makePortId('bottom', 0.68),
+        controlPoint:{ x:236, y:402 }
+      }
     ];
-    state.messageFlows = defs.map((d, i) => ({ id:id('flow'), sourceComponentId:byName[d[0]], targetComponentId:byName[d[1]], messageText:d[2], sequenceNumber:i+1, actionText:d[3], processingImageDataUrl:'', notes:'', connectionStyle:d[4], style:{color:'#475569', thickness:2.2, textColor:'#0f172a'}, sourcePortId:'', targetPortId:'', timing:'afterPrevious' }));
+
+    state.messageFlows = defs.map((d, i) => ({
+      id:id('flow'),
+      sourceComponentId:byName[d.source],
+      targetComponentId:byName[d.target],
+      messageText:d.message,
+      sequenceNumber:i+1,
+      actionText:d.action,
+      processingImageDataUrl:'',
+      notes:'',
+      connectionStyle:'arc',
+      style:{ color:d.color, thickness:2.8, textColor:'#0f172a' },
+      sourcePortId:d.sourcePortId,
+      targetPortId:d.targetPortId,
+      timing:'afterPrevious',
+      controlPoint:d.controlPoint,
+      visibleInEditor:true
+    }));
+
     fitInitialExample();
     pushHistory('example');
     renderAll();
   }
 
   function fitInitialExample(){
-    state.settings.zoom = 1;
-    state.settings.panX = 90;
-    state.settings.panY = 90;
+    state.settings.zoom = .82;
+    state.settings.panX = 28;
+    state.settings.panY = 34;
   }
 
   function align(direction){

@@ -1052,3 +1052,19 @@ Requirements:
 - Include a `README.md` explaining the application, project structure, local usage, and GitHub Pages deployment.
 - Include a `.gitignore` suitable for a small static browser application.
 - Include this adapted requirements catalogue in `docs/event-flow-designer-adapted-prompt.txt`.
+
+
+Additional adaptation:
+- The example functionality shall create a better-designed example diagram and use curved arrows for the example connections.
+
+
+Additional adaptation:
+- The built-in Example action shall generate a more polished sample diagram layout and use curved arrows.
+
+
+Additional adaptation:
+- The Example diagram shall use the package names "Frontend" and "Backend", rename the "Frontend" component to "Web UI", and ensure all components are fully contained within their respective packages.
+
+
+Additional adaptation:
+- The Example diagram shall not use package grouping and shall use increased horizontal spacing between the backend service components.
