@@ -4,7 +4,7 @@ A lightweight web app for designing, visualizing, and animating event-based mess
 
 It is intended for architecture discussions, workshops, documentation, and presentations, including explanations for non-technical stakeholders.
 
-> **Live demo:** [Open Message Flow Designer](https://YOUR-DEMO-LINK.example)
+> **Live demo:** [Open Message Flow Designer](https://asalmhofer.github.io/message-flow-designer/)
 
 ## Features
 
