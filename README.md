@@ -1,31 +1,100 @@
 # Message Flow Designer
 
-A lightweight web app for designing, visualizing, and animating event-based message flows between software components.
+A lightweight, fully client-side web application for designing and animating message/event flows between software components.
 
-It is intended for architecture discussions, workshops, documentation, and presentations, including explanations for non-technical stakeholders.
+The application is built with HTML5, CSS3, vanilla JavaScript, native ES modules, SVG, and browser-native APIs. It does not require a backend or a production build step and can be hosted with GitHub Pages.
 
-> **Live demo:** [Open Message Flow Designer](https://asalmhofer.github.io/message-flow-designer/)
+### Runtime compatibility note
 
-## Features
-
-- Create, rename, resize, move, and style components
-- Connect components with directed message flows
-- Define message names, processing actions, notes, and execution order
-- Attach explanatory images to processing steps
-- Reorder and edit steps in a structured flow panel
-- Animate flows step by step or automatically
-- Use a clean presentation mode
-- Zoom, pan, align, distribute, undo, and redo
-- Import and export diagrams as JSON
-- Save diagrams locally in the browser
+`index.html` now boots through `src/runtime/app.js`, a classic browser script generated from the preserved legacy compatibility layer. This keeps the application usable by opening `index.html` directly from the file system and on GitHub Pages. The modular ES source under `src/` remains the target architecture for incremental extraction and tests.
 
 ## Run locally
 
-No installation or build step is required.
+Open `index.html` directly in a modern browser, or run a simple static server:
 
-1. Clone or download the repository.
-2. Open `index.html` in a modern browser.
+```bash
+python3 -m http.server 8080
+```
 
-## Technology
+Then open `http://localhost:8080`.
 
-The application runs entirely in the browser using HTML, CSS, and JavaScript. It does not require a backend, database, npm, or user account.
+## Development setup
+
+```bash
+npm install
+npm run test
+npm run lint
+npm run format
+```
+
+The npm tooling is development-only. The production app remains static and framework-free.
+
+## Project structure
+
+```text
+src/
+├── main.js                     # Composition root
+├── config/                     # Defaults and constants
+├── model/                      # Domain factories and validation
+├── state/                      # Store, actions, reducers, commands, history
+├── canvas/                     # Geometry and canvas-controller extraction points
+├── flow/                       # Flow ordering and flow-panel extraction points
+├── animation/                  # Animation and presentation state/services
+├── storage/                    # Import/export, schema, migrations, local persistence
+├── ui/                         # Toolbar/dialog/context-menu/notification helpers
+├── registry/                   # Shape, connector, and tool registries
+├── styles/                     # CSS split into focused files
+└── legacy/                     # Compatibility runtime preserving current behavior
+```
+
+## Architecture flow
+
+```mermaid
+flowchart LR
+  A[Browser interaction] --> B[Controller]
+  B --> C[Action or command]
+  C --> D[Central store]
+  D --> E[Selectors]
+  E --> F[Renderers]
+  D --> G[Persistence]
+```
+
+The new modules establish a controlled data flow. The current production runtime is wrapped in `src/legacy/bootstrapLegacyApp.js` to preserve behavior during incremental extraction.
+
+## Adding a shape
+
+1. Add a shape module or shape definition.
+2. Register it through `src/registry/shapeRegistry.js`.
+3. Add tests for ports/bounds if needed.
+4. Add toolbar metadata in the UI extraction layer.
+
+## Adding a connector type
+
+1. Add geometry/path logic in `src/canvas/geometry.js` or a new connector module.
+2. Register it through `src/registry/connectorRegistry.js`.
+3. Add tests for path calculation and label positioning.
+
+## Adding a canvas tool
+
+1. Implement the tool controller with `activate`, `deactivate`, and pointer handlers.
+2. Register it through `src/registry/toolRegistry.js`.
+3. Dispatch explicit actions/commands rather than mutating shared state directly.
+
+## JSON files
+
+Exported project files are versioned through `schemaVersion`. See `docs/JSON_SCHEMA.md` and `src/storage/migrations.js`.
+
+## Deployment
+
+This repository can be hosted as a static website. For GitHub Pages, publish the repository root or configure Pages to serve the default branch.
+
+### Latest UI refinements
+
+The runtime includes handle-based flow-step reordering, a more prominent presentation entry point, presentation-mode toolbar cleanup, and a more structured edit-step dialog.
+
+
+### Recent UI refinements
+
+The flow panel opens by default and can be collapsed or expanded using the bottom-left panel icon. The Edit Step dialog uses up/down controls to reorder steps, animation speed is controlled by a continuous speed slider, and the main animation controls use icon-only buttons for a cleaner presentation toolbar.
+
+- UI polish: resizable flow panel, corrected collapse/expand icon direction, radio-based play mode, centered playback controls, and disabled step navigation in auto mode.

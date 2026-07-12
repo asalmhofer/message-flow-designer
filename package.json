@@ -1,0 +1,18 @@
+{
+  "name": "message-flow-designer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node --test tests/**/*.test.js",
+    "lint": "eslint src tests",
+    "format": "prettier --write .",
+    "check": "npm run test && npm run lint"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0"
+  }
+}
