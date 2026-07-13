@@ -55,3 +55,24 @@ test('runtime exposes resized panel and radio play mode controls', () => {
   assert.match(runtime, /prevBtn\.disabled = isAutoMode/);
   assert.match(runtime, /nextBtn\.disabled = isAutoMode/);
 });
+
+
+test('runtime supports requested presentation and editing shortcuts', () => {
+  const runtime = readFileSync(runtimePath, 'utf8');
+  assert.match(indexHtml, /data-shape="text"/);
+  assert.match(runtime, /shape === 'text'/);
+  assert.match(runtime, /ctrlDragCopy/);
+  assert.match(runtime, /e\.button === 2/);
+  assert.match(runtime, /contextmenu/);
+  const css = readFileSync(new URL('../../src/styles/base.css', import.meta.url), 'utf8');
+  assert.match(css, /body\.presentation \.feedbackButton\{display:none!important\}/);
+});
+
+test('runtime defaults to auto mode and example includes processing images', () => {
+  const runtime = readFileSync(runtimePath, 'utf8');
+  assert.match(runtime, /animationMode: 'auto'/);
+  assert.match(indexHtml, /name="animationMode" value="auto" checked/);
+  assert.match(runtime, /exampleProcessingImage/);
+  assert.match(runtime, /processingImageDataUrl:d\.image \|\| ''/);
+  assert.match(runtime, /if\(drag\?\.type === 'pan'\) return 'grabbing'/);
+});
