@@ -5,7 +5,7 @@ export function defaultPreferences(){
     showGrid: true,
     snapToGrid: true,
     animationSpeed: 'normal',
-    animationMode: 'step',
+    animationMode: 'auto',
     defaultConnectorType: 'arc',
     showInactiveConnectorsInPresentation: true,
     presentationImagePanelOpen: true,

@@ -8,7 +8,7 @@
   const MAX_ZOOM = 3.2;
   const MIN_MOVE_DURATION = 550;
   const MAX_MOVE_DURATION = 2600;
-  const SHAPES = ['package','roundedRectangle','rectangle','ellipse','diamond','hexagon','triangle','pentagon','trapezoid','parallelogram','cylinder','queue','document','note','cloud','actor'];
+  const SHAPES = ['package','text','roundedRectangle','rectangle','ellipse','diamond','hexagon','triangle','pentagon','trapezoid','parallelogram','cylinder','queue','document','note','cloud','actor'];
   const LEGACY_PORT_DEFS = [
     ['top25','Top 25%','top',0.25], ['top50','Top center','top',0.50], ['top75','Top 75%','top',0.75],
     ['right25','Right 25%','right',0.25], ['right50','Right center','right',0.50], ['right75','Right 75%','right',0.75],
@@ -140,7 +140,7 @@
       components: [],
       messageFlows: [],
       settings: {
-        animationMode: 'step',
+        animationMode: 'auto',
         animationSpeed: 50,
         autoContinueAfterArrival: false,
         autoContinueDelay: 1200,
@@ -465,7 +465,8 @@
   }
 
   function cursorForMode(){
-    if(state.settings.activeCanvasMode === 'pan') return drag?.type === 'pan' ? 'grabbing' : 'grab';
+    if(drag?.type === 'pan') return 'grabbing';
+    if(state.settings.activeCanvasMode === 'pan') return 'grab';
     if(state.settings.activeCanvasMode === 'connect') return connectSourceId ? 'crosshair' : 'cell';
     return 'default';
   }
@@ -501,6 +502,8 @@
         return svgEl('polygon', { ...common, points:`${c.x+c.width*.22},${c.y} ${c.x+c.width*.78},${c.y} ${c.x+c.width},${c.y+c.height} ${c.x},${c.y+c.height}` });
       case 'parallelogram':
         return svgEl('polygon', { ...common, points:`${c.x+c.width*.22},${c.y} ${c.x+c.width},${c.y} ${c.x+c.width*.78},${c.y+c.height} ${c.x},${c.y+c.height}` });
+      case 'text':
+        return svgEl('rect', { class:'componentShape textItemShape', x:c.x, y:c.y, width:c.width, height:c.height, rx:6, ry:6, fill:'transparent', stroke:'transparent', 'stroke-width':0 });
       case 'package': {
         const headerH = packageHeaderHeight(c);
         const group = svgEl('g', {});
@@ -557,12 +560,13 @@
 
   function componentTextEl(c){
     const isPackage = c.shape === 'package';
+    const isTextItem = c.shape === 'text';
     const headerH = isPackage ? packageHeaderHeight(c) : c.height;
-    const maxLines = isPackage ? 2 : 4;
-    const lineHeight = isPackage ? 14 : 16;
+    const maxLines = isPackage ? 2 : (isTextItem ? 6 : 4);
+    const lineHeight = isPackage ? 14 : (isTextItem ? 20 : 16);
     const y = isPackage ? c.y + headerH/2 : c.y + c.height/2;
     const text = svgEl('text', {
-      class: classNames('componentText', isPackage && 'packageText'),
+      class: classNames('componentText', isPackage && 'packageText', isTextItem && 'textItemText'),
       x:c.x+c.width/2,
       y,
       fill:c.textColor || '#0f172a',
@@ -1347,13 +1351,14 @@
     const count = state.components.length + 1;
     const shape = state.settings.defaultShape || 'roundedRectangle';
     const isPackage = shape === 'package';
-    const width = isPackage ? 320 : 170, height = isPackage ? 220 : 90;
+    const isTextItem = shape === 'text';
+    const width = isPackage ? 320 : (isTextItem ? 210 : 170), height = isPackage ? 220 : (isTextItem ? 54 : 90);
     const c = {
       id: id('cmp'),
-      name: isPackage ? `Package ${state.components.filter(c => c.shape === 'package').length + 1}` : `Component ${count}`,
+      name: isPackage ? `Package ${state.components.filter(c => c.shape === 'package').length + 1}` : (isTextItem ? `Text ${state.components.filter(c => c.shape === 'text').length + 1}` : `Component ${count}`),
       shape,
       x: snap(x - width/2), y: snap(y - height/2), width, height,
-      fillColor: isPackage ? '#e0f2fe' : '#ffffff', borderColor: isPackage ? '#2563eb' : '#334155', textColor: isPackage ? '#1e3a8a' : '#0f172a', borderWidth: 2,
+      fillColor: isPackage ? '#e0f2fe' : (isTextItem ? 'transparent' : '#ffffff'), borderColor: isPackage ? '#2563eb' : (isTextItem ? 'transparent' : '#334155'), textColor: isPackage ? '#1e3a8a' : '#0f172a', borderWidth: isTextItem ? 0 : 2,
       zIndex: isPackage ? 0 : nextZ()
     };
     state.components.push(c);
@@ -2044,6 +2049,35 @@
     }
     state = defaultState();
     currentFileName = state.settings.diagramFileName || 'event-flow-designer.json';
+    const exampleProcessingImage = (title, subtitle, icon, color) => {
+      const escapeXml = value => String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+        <defs>
+          <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#f8fafc"/>
+            <stop offset="100%" stop-color="#e0f2fe"/>
+          </linearGradient>
+          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#0f172a" flood-opacity="0.16"/>
+          </filter>
+        </defs>
+        <rect width="960" height="540" rx="28" fill="url(#bg)"/>
+        <rect x="88" y="84" width="784" height="372" rx="34" fill="#ffffff" filter="url(#shadow)"/>
+        <circle cx="190" cy="270" r="76" fill="${color}" opacity="0.16"/>
+        <circle cx="190" cy="270" r="52" fill="${color}"/>
+        <text x="190" y="292" text-anchor="middle" font-size="58" font-family="Arial, sans-serif">${escapeXml(icon)}</text>
+        <text x="300" y="230" font-size="42" font-weight="800" fill="#0f172a" font-family="Inter, Arial, sans-serif">${escapeXml(title)}</text>
+        <text x="300" y="288" font-size="24" fill="#334155" font-family="Inter, Arial, sans-serif">${escapeXml(subtitle)}</text>
+        <path d="M300 328 H790" stroke="#e2e8f0" stroke-width="3" stroke-linecap="round"/>
+        <text x="300" y="374" font-size="22" fill="#64748b" font-family="Inter, Arial, sans-serif">Processing action shown during presentation</text>
+      </svg>`;
+      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    };
     const comps = [
       {
         id:id('cmp'), name:'Web UI', shape:'roundedRectangle', x:84, y:196, width:150, height:84,
@@ -2073,37 +2107,44 @@
       {
         source:'Web UI', target:'Order Service', message:'Submit Order', action:'Validate order and create a new order',
         color:'#2563eb', sourcePortId:makePortId('right', 0.5), targetPortId:makePortId('left', 0.5),
-        controlPoint:{ x:286, y:212 }
+        controlPoint:{ x:286, y:212 },
+        image:exampleProcessingImage('Validate order', 'Create order and reserve an order ID', '📝', '#2563eb')
       },
       {
         source:'Order Service', target:'Inventory Service', message:'Reserve Stock', action:'Check availability and reserve items',
         color:'#16a34a', sourcePortId:makePortId('right', 0.34), targetPortId:makePortId('left', 0.34),
-        controlPoint:{ x:692, y:96 }
+        controlPoint:{ x:692, y:96 },
+        image:exampleProcessingImage('Reserve stock', 'Check item availability in inventory', '📦', '#16a34a')
       },
       {
         source:'Inventory Service', target:'Order Service', message:'Stock Reserved', action:'Update the order with the reservation result',
         color:'#0f766e', sourcePortId:makePortId('left', 0.72), targetPortId:makePortId('right', 0.7),
-        controlPoint:{ x:700, y:220 }
+        controlPoint:{ x:700, y:220 },
+        image:exampleProcessingImage('Confirm reservation', 'Return stock reservation result', '✅', '#0f766e')
       },
       {
         source:'Order Service', target:'Payment Service', message:'Payment Request', action:'Authorize the payment',
         color:'#d97706', sourcePortId:makePortId('right', 0.84), targetPortId:makePortId('left', 0.28),
-        controlPoint:{ x:706, y:232 }
+        controlPoint:{ x:706, y:232 },
+        image:exampleProcessingImage('Authorize payment', 'Send payment request to provider', '💳', '#d97706')
       },
       {
         source:'Payment Service', target:'Order Service', message:'Payment Authorized', action:'Mark the order as paid',
         color:'#b45309', sourcePortId:makePortId('left', 0.7), targetPortId:makePortId('right', 0.96),
-        controlPoint:{ x:700, y:360 }
+        controlPoint:{ x:700, y:360 },
+        image:exampleProcessingImage('Payment authorized', 'Mark the order as paid', '🔐', '#b45309')
       },
       {
         source:'Order Service', target:'Notification Service', message:'Send Confirmation', action:'Create and dispatch the customer confirmation',
         color:'#9333ea', sourcePortId:makePortId('bottom', 0.42), targetPortId:makePortId('top', 0.56),
-        controlPoint:{ x:480, y:246 }
+        controlPoint:{ x:480, y:246 },
+        image:exampleProcessingImage('Prepare confirmation', 'Create the customer confirmation message', '✉️', '#9333ea')
       },
       {
         source:'Notification Service', target:'Web UI', message:'Confirmation Ready', action:'Show the order confirmation to the customer',
         color:'#7c3aed', sourcePortId:makePortId('left', 0.48), targetPortId:makePortId('bottom', 0.68),
-        controlPoint:{ x:236, y:402 }
+        controlPoint:{ x:236, y:402 },
+        image:exampleProcessingImage('Show confirmation', 'Display the confirmation in the Web UI', '🖥️', '#7c3aed')
       }
     ];
 
@@ -2114,7 +2155,7 @@
       messageText:d.message,
       sequenceNumber:i+1,
       actionText:d.action,
-      processingImageDataUrl:'',
+      processingImageDataUrl:d.image || '',
       notes:'',
       connectionStyle:'arc',
       style:{ color:d.color, thickness:2.8, textColor:'#0f172a' },
@@ -2234,11 +2275,11 @@
 
   function onSvgPointerDown(e){
     closeContextMenu();
-    if(e.button !== 0 && e.button !== 1) return;
+    if(e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     const target = e.target;
     const world = screenToWorld(e);
 
-    if(state.settings.activeCanvasMode === 'pan' || e.button === 1 || (e.spaceKeyTempPan === true)){
+    if(state.settings.activeCanvasMode === 'pan' || e.button === 1 || e.button === 2 || (e.spaceKeyTempPan === true)){
       drag = { type:'pan', startX:e.clientX, startY:e.clientY, panX:state.settings.panX, panY:state.settings.panY };
       els.svg.setPointerCapture(e.pointerId);
       renderAll();
@@ -2329,6 +2370,49 @@
 
     const cid = componentIdFromTarget(target);
     if(cid){
+      const ctrlDragCopy = (e.ctrlKey || e.metaKey) && !e.shiftKey;
+      if(ctrlDragCopy){
+        const baseIds = isSelectedComponent(cid) ? [...state.ui.selectedComponentIds] : [cid];
+        const selected = state.components.filter(c => baseIds.includes(c.id));
+        const idMap = new Map();
+        const copies = selected.map(c => {
+          const copy = JSON.parse(JSON.stringify(c));
+          copy.id = id('cmp');
+          copy.zIndex = nextZ() + idMap.size;
+          idMap.set(c.id, copy.id);
+          return copy;
+        });
+        const flowCopies = state.messageFlows.filter(f => idMap.has(f.sourceComponentId) && idMap.has(f.targetComponentId)).map(f => ({
+          ...JSON.parse(JSON.stringify(f)),
+          id:id('flow'),
+          sourceComponentId:idMap.get(f.sourceComponentId),
+          targetComponentId:idMap.get(f.targetComponentId),
+          sequenceNumber:state.messageFlows.length + 1
+        }));
+        state.components.push(...copies);
+        state.messageFlows.push(...flowCopies);
+        state.ui.selectedComponentIds = copies.map(c => c.id);
+        state.ui.selectedFlowId = null;
+        const selectedOriginals = expandMoveOriginalsForPackages(copies.map(c => JSON.parse(JSON.stringify(c))));
+        drag = {
+          type:'move',
+          startWorld:world,
+          originals:selectedOriginals,
+          flowControlOriginals:flowControlOriginalsForComponentMove(selectedOriginals),
+          copyDrag:true,
+          copiedComponentIds:copies.map(c => c.id),
+          copiedFlowIds:flowCopies.map(f => f.id),
+          clickCandidate:false,
+          moved:false,
+          startClientX:e.clientX,
+          startClientY:e.clientY,
+          clickComponentId:null,
+          clickPortId:null
+        };
+        els.svg.setPointerCapture(e.pointerId);
+        renderAll();
+        return;
+      }
       if(!isSelectedComponent(cid)) selectComponent(cid, e.shiftKey || e.ctrlKey || e.metaKey);
       else if(e.shiftKey || e.ctrlKey || e.metaKey) selectComponent(cid, true);
       const clickedComponent = findComponent(cid);
@@ -2434,11 +2518,20 @@
       const openConnectionOverlay = finishedDrag.clickCandidate && !finishedDrag.moved && finishedDrag.clickComponentId && !state.ui.presentationMode;
       drag = null;
       try{ els.svg.releasePointerCapture(e.pointerId); }catch{}
+      if(finishedDrag.copyDrag && !finishedDrag.moved){
+        const copiedComponents = new Set(finishedDrag.copiedComponentIds || []);
+        const copiedFlows = new Set(finishedDrag.copiedFlowIds || []);
+        state.components = state.components.filter(c => !copiedComponents.has(c.id));
+        state.messageFlows = state.messageFlows.filter(f => !copiedFlows.has(f.id));
+        clearSelection();
+        renderAll();
+        return;
+      }
       if(openConnectionOverlay){
         startConnectionFromSource(finishedDrag.clickComponentId, finishedDrag.clickPortId);
         return;
       }
-      if(finishedDrag.moved) pushHistory('move');
+      if(finishedDrag.moved) pushHistory(finishedDrag.copyDrag ? 'copy by ctrl-drag' : 'move');
       renderAll();
       return;
     }
@@ -2713,6 +2806,7 @@
     els.svg.addEventListener('pointermove', onSvgPointerMove);
     els.svg.addEventListener('pointerup', onSvgPointerUp);
     els.svg.addEventListener('pointercancel', onSvgPointerUp);
+    els.svg.addEventListener('contextmenu', (e) => e.preventDefault());
     els.svg.addEventListener('dblclick', onSvgDblClick);
     els.svg.addEventListener('wheel', onWheel, { passive:false });
     els.svg.addEventListener('contextmenu', onContextMenu);

@@ -108,7 +108,7 @@ export function bootstrapLegacyApp(){
       components: [],
       messageFlows: [],
       settings: {
-        animationMode: 'step',
+        animationMode: 'auto',
         animationSpeed: 'normal',
         autoContinueAfterArrival: false,
         autoContinueDelay: 1200,
@@ -380,7 +380,8 @@ export function bootstrapLegacyApp(){
   }
 
   function cursorForMode(){
-    if(state.settings.activeCanvasMode === 'pan') return drag?.type === 'pan' ? 'grabbing' : 'grab';
+    if(drag?.type === 'pan') return 'grabbing';
+    if(state.settings.activeCanvasMode === 'pan') return 'grab';
     if(state.settings.activeCanvasMode === 'connect') return connectSourceId ? 'crosshair' : 'cell';
     return 'default';
   }

@@ -182,7 +182,7 @@
     outline:3px solid rgba(245,158,11,.35);
     outline-offset:3px;
   }
-  body.presentation .feedbackButton{bottom:72px}
+  body.presentation .feedbackButton{display:none!important}
 
   .animationBar{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:6px;max-width:calc(100% - 24px);padding:7px 9px;background:rgba(255,255,255,.96);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);overflow:auto}
   .animationBar button,.animationBar select{height:34px;flex:0 0 auto}
@@ -211,6 +211,9 @@
   .contextMenu button{width:100%;justify-content:flex-start;border:0;background:transparent;border-radius:8px;padding:9px}
   .contextMenu button:hover{background:#f1f5f9}
   .componentShape{stroke-linejoin:round;filter:url(#softShadow)}
+  .textItemShape{filter:none!important;stroke:transparent!important;fill:transparent!important}
+  .componentGroup.selected .textItemShape{stroke:#2563eb!important;stroke-width:1.8!important;stroke-dasharray:5 4!important}
+  .textItemText{font-size:18px;font-weight:750}
   .packageComponent .packageShape{fill-opacity:.12}
   .packageComponent.selected .packageShape{fill-opacity:.18}
   .packageSeparator{stroke:#94a3b8;stroke-width:1.6;vector-effect:non-scaling-stroke;pointer-events:none}
