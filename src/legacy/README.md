@@ -1,6 +1,5 @@
 # Legacy compatibility layer
 
-This module contains the current production runtime, wrapped as an ES module function so the app can be loaded by `src/main.js`.
+This folder now contains a small ES module adapter for `src/main.js`. It imports the shared storage and image-export helpers and calls the same `src/runtime/app.js` implementation used by the direct-open page.
 
-It exists to preserve the full existing UI behavior while the surrounding architecture is extracted into focused modules.
-New domain logic, storage logic, geometry, state actions, registries, and tests live outside this folder. Future incremental work should move behavior out of this compatibility layer into the relevant modules, keeping regression tests green after each move.
+Do not copy application logic into this adapter. Extract shared behavior from the runtime into focused modules and keep both entry points consuming the same implementation. Browser tests cover the actual production page.

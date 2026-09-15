@@ -1,0 +1,45 @@
+.exportDialog{box-sizing:border-box;width:min(1020px,calc(100vw - 40px));max-height:calc(100dvh - 40px);padding:0;border:1px solid #cbd5e1;border-radius:16px;color:#27354a;background:#fff;box-shadow:0 24px 90px #14203944;overflow:hidden}
+.exportDialog::backdrop{background:#14203966;backdrop-filter:blur(2px)}
+.exportDialog[open]{display:flex;flex-direction:column}
+.exportDialog [hidden]{display:none!important}
+.exportHead{padding:20px 24px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0}
+.exportEyebrow{font-size:9px;letter-spacing:.14em;font-weight:650;color:#6a7a92}
+.exportHead h2{font-size:23px;letter-spacing:-.03em;margin:4px 0 0}
+.exportHead button{border:0;background:none;width:34px;height:34px;padding:7px}
+.exportBody{display:grid;grid-template-columns:minmax(0,1fr) 326px;min-height:0;overflow:hidden}
+.exportPreviewSection{padding:24px;background:#edf1f6;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.exportPreviewStage{aspect-ratio:16/9;background:#fff;border:1px solid #d1dbe8;border-radius:9px;overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px #14203909}
+.exportPreviewStage canvas,.exportPreviewStage img,.exportPreviewStage video{display:block;width:100%;max-height:100%;object-fit:contain}
+.exportPreviewControls{display:flex;align-items:center;gap:10px;background:#202c3e;color:#e2eaf6;border-radius:9px;padding:7px 10px;margin-top:16px}
+.exportPreviewControls button{padding:5px;width:30px;height:30px;background:transparent;border:0;color:#e9b550}
+.exportPreviewControls input{width:100%;min-width:0;accent-color:#e9b550}
+.exportPreviewControls output{font-size:10px;white-space:nowrap;min-width:74px;text-align:right;font-variant-numeric:tabular-nums}
+.exportPreviewNote{font-size:11px;color:#62738b;line-height:1.5;margin:14px 0 7px}
+.exportSummary{font-size:11px;color:#34465f;margin:0;font-variant-numeric:tabular-nums}
+.exportSettings{padding:20px;overflow-y:auto;overscroll-behavior:contain;min-height:0;display:flex;flex-direction:column;gap:16px}
+.exportFormats{border:0;padding:0;margin:0;min-width:0}
+.exportFormats legend,.exportField{font-size:11px;font-weight:600;color:#506077}
+.exportFormats>div{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:8px}
+.exportFormats button{justify-content:center;font-size:12px;padding:9px 5px;background:#f5f7fa;border-color:#dce3ec}
+.exportFormats button[aria-pressed="true"]{background:#eaf2ff;border-color:#81a7e8;color:#245bc2}
+.exportField{display:flex;flex-direction:column;gap:7px;min-width:0}
+.exportField input:not([type="range"]),.exportField select{height:35px;width:100%;min-width:0;border:1px solid #ccd7e5;background:#fff;color:#27354a;border-radius:7px;padding:6px 8px;font:400 12px "Segoe UI",sans-serif}
+.exportColumns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.exportChecks{display:flex;flex-direction:column;gap:10px}
+.exportChecks label,.exportCheck{display:flex;align-items:center;gap:8px;font-size:11px;line-height:1.5;color:#506077}
+.exportChecks input,.exportCheck input{margin:0;accent-color:#2563eb;width:14px;height:14px}
+.exportChecks small{font-size:10px;line-height:1.5;color:#748299;margin-top:-5px;margin-left:22px}
+.exportSectionTitle{font-size:12px;font-weight:650;padding-top:4px;border-top:1px solid #e2e8f0;margin-top:2px;padding-bottom:4px}
+#exportAnimationSettings{display:flex;flex-direction:column;gap:15px}
+.exportAdvanced{font-size:11px;color:#506077}
+.exportAdvanced summary{cursor:pointer;padding:2px 0 8px;font-weight:600}
+.exportAdvanced .exportCheck{margin-top:12px}
+.exportCapability{margin:0;font-size:10px;line-height:1.55;color:#6a7a92}
+.exportFooter{padding:14px 24px;display:flex;gap:9px;align-items:center;border-top:1px solid #dce3ec;background:#fff;flex-shrink:0}
+.exportStatus{margin-right:auto;min-width:0;display:flex;flex-direction:column;gap:6px;max-width:55%;font-size:11px;color:#5e6e83;line-height:1.4}
+.exportStatus progress{width:190px;max-width:100%;height:5px;accent-color:#c98718}
+.exportFooter button,.exportDownload{min-height:35px;padding:8px 13px;font-size:12px;border-radius:8px}
+.exportFooter .primary,.exportDownload{background:#2563eb;border:1px solid #2563eb;color:white;text-decoration:none}
+.exportDialog :focus-visible{outline:2px solid #7da5ed;outline-offset:2px}
+@media(min-width:761px){.exportBody{height:min(535px,calc(100dvh - 213px))}}
+@media(max-width:760px){.exportDialog{width:calc(100vw - 20px);max-height:calc(100dvh - 20px)}.exportBody{display:block;overflow-y:auto}.exportPreviewSection{padding:14px}.exportSettings{overflow:visible}.exportPreviewStage{max-height:230px}.exportHead{padding:14px 18px}.exportFooter{padding:12px 14px}.exportStatus{max-width:45%}}

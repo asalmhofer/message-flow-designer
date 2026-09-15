@@ -1,0 +1,74 @@
+/* Interface surfaces are independent of the document's diagram palette. */
+:root{--chrome:#202c3e;--chrome-hover:#334258;--workspace:#edf1f6;--workspace-border:#d3dce7;--edit-accent:#2563eb;--motion-accent:#d98b16;--muted:#5d6d82}
+.toolbar,.presentation .toolbar{background:var(--chrome);border-bottom:1px solid #172233;color:#e8eef7;box-shadow:0 1px 4px #17223318}
+.toolbar .brand,.presentation .toolbar .brand{background:#35445c;color:#d6e5ff;opacity:1}
+.toolbar .documentIdentity input{background:transparent;color:#f5f8fc;border-color:transparent}
+.toolbar .documentIdentity input:hover,.toolbar .documentIdentity input:focus{background:#2e3c51;border-color:#70839e}
+.toolbar #saveStatus{color:#bac8dc}
+.toolbar #saveStatus.error{color:#ffc6bf}
+.toolbar .menuGroup>summary,.toolbar .historyControls button{background:transparent;color:#dbe5f3;border-color:transparent}
+.toolbar .menuGroup>summary:hover,.toolbar .menuGroup[open]>summary,.toolbar .historyControls button:hover{background:var(--chrome-hover);color:#fff}
+.toolbar .historyControls button:disabled{opacity:.4}
+.toolbar .presentAction{background:#eef4ff;color:#234984;border:1px solid #eef4ff}
+.toolbar .presentAction:hover{background:#dbe8ff;color:#15396f;border-color:#dbe8ff}
+.toolbar .menuPanel{background:#fff;color:#27354a;border:1px solid var(--workspace-border);box-shadow:0 12px 32px #17223322}
+.toolbar .menuPanel button,.toolbar .menuPanel a{color:#27354a;background:#fff}
+.toolbar .menuPanel button:hover,.toolbar .menuPanel a:hover{background:#edf3ff;color:#1d4ed8}
+.toolbar .menuPanel .danger{color:#b42332}
+.toolbar :focus-visible,.animationBar>button:focus-visible,.playbackOptions>summary:focus-visible{outline:2px solid #a6c7ff;outline-offset:2px}
+.canvasWrap,.presentation .canvasWrap{background:#fff}
+.sidePanel,.sideHead,.sideScroll,.flowStepsCard,.propertiesCard,.presentation .sidePanel,.presentation .sideHead{background:var(--workspace);border-color:var(--workspace-border)}
+.sidePanel{box-shadow:inset 1px 0 #fff}
+.sidebarTabs button{color:#53647c}
+.sidebarTabs button[aria-selected="true"]{color:#1d4ed8;border-bottom-color:var(--edit-accent)}
+#flowCount{background:#dde5ef;color:#506077}
+.flowHelp{color:#596b83}
+.flowItem,.flowItem.hiddenConnector{background:#fff;border-color:#d7e0eb;box-shadow:0 1px 2px #17223305}
+.flowItem.selected{background:#f5f9ff;border-color:#6f9de9;box-shadow:0 0 0 1px #6f9de933}
+.flowRoute,.flowTiming{color:#5e6e83}
+.properties input,.properties select,.properties textarea{background:#fff;border-color:#ccd7e5}
+.inspectorSection{border-bottom-color:#d5deea}
+.inspectorHeading button{color:#245bc2}
+.borderOptions button[aria-pressed="true"]{background:#eaf2ff;border-color:#81a7e8;color:#245bc2}
+.leftCreateToolbar,.canvasView,.selectionTools{background:#f1f4f8;border-color:#ccd7e5;box-shadow:0 2px 7px #1722330b}
+.leftTool.active{background:#e2ecff;color:#1d4ed8;border-color:#aac4ef}
+.animationBar,.presentation .animationBar{background:var(--chrome);border-color:#172233;color:#edf3fc;box-shadow:0 4px 16px #17223326}
+.animationBar>button,.animationBar>.iconOnlyAnim,.presentation .animationBar>button{background:transparent;color:#e1eaf7;border-color:transparent}
+.animationBar>button:hover,.presentation .animationBar>button:hover,.playbackOptions>summary:hover{background:var(--chrome-hover)}
+.animationBar>.iconOnlyAnim.primaryAnim,.presentation .animationBar>.iconOnlyAnim.primaryAnim{background:#e9b550;color:#302309;border-color:#e9b550}
+.animationBar>.iconOnlyAnim.primaryAnim:hover,.presentation .animationBar>.iconOnlyAnim.primaryAnim:hover{background:#f3c975;border-color:#f3c975}
+.playbackSummary,.presentation .playbackSummary{color:#e2eaf6}
+#playbackPhase{color:#bac8dc}
+.playbackOptions>summary,.presentation .playbackOptions>summary{color:#e2eaf6;background:transparent;border-color:transparent}
+.animationBar .playbackPanel,.presentation .animationBar .playbackPanel{background:#fff;color:#27354a;border-color:#ccd7e5}
+.animationBar .playbackPanel button,.presentation .animationBar .playbackPanel button{color:#27354a;background:#fff;border-color:#d3dce7}
+.phaseChip{background:#fff5df;border-color:#edd2a0;color:#8b5a0b}
+
+/* Playback feedback uses timestamps, so pause freezes both the token and cues. */
+.activeConnectionOverlay,.presentation .activeConnectionOverlay{stroke:#d98b16;stroke-width:1.8!important;filter:none!important;pointer-events:none;fill:none}
+.flowPath.active,.presentation .flowPath.active{stroke-width:1.8!important;stroke-opacity:.25!important}
+.messageTrace{fill:none;stroke:#c78113;stroke-width:3;stroke-linecap:round;pointer-events:none;vector-effect:non-scaling-stroke}
+.messageToken{pointer-events:none;filter:none}
+.componentGroup.activeSource .componentShape{stroke:#c79b4e!important;stroke-width:2!important}
+.componentGroup.activeTarget .componentShape,.componentGroup.processing .componentShape{stroke:#d39931!important;stroke-width:2!important}
+.flowItem.activeAnim{border-color:#d6af65;box-shadow:none}
+.flowItem,.timelineMessage{position:relative}
+.stepProgress{position:absolute;left:8px;right:8px;bottom:0;height:2px;overflow:hidden;border-radius:1px;pointer-events:none}
+.stepProgress>span{display:block;width:100%;height:100%;background:var(--motion-accent);transform-origin:left;transform:scaleX(var(--step-progress,0))}
+.stepCompletion{width:17px;height:17px;display:flex;flex:0 0 17px;align-items:center;justify-content:center;color:#687b65}
+.stepCompletion[hidden]{display:none}
+.stepCompletion .uiIcon{width:14px;height:14px;flex-basis:14px}
+.flowTimingWrap{display:flex;align-items:center;gap:5px;min-width:0}
+.flowTimingWrap .stepCompletion{background:#edf3eb;border-radius:50%}
+.flowItem[data-playback-state="completed"] .flowTiming{color:#52664e}
+[data-playback-state="completed"] .stepProgress>span{background:#a4b39f}
+.timelineMessage{padding-right:35px}
+.timelineMessage>.stepCompletion{position:absolute;right:12px;top:50%;transform:translateY(-50%)}
+.timelineMessage[aria-current="step"][data-playback-state="transfer"],.timelineMessage[aria-current="step"][data-playback-state="arrived"],.timelineMessage[aria-current="step"][data-playback-state="processing"]{background:#fff7e6;border-color:#e5c994;color:#81540e}
+.timelineMessage[data-playback-state="transfer"] .timelineNumber,.timelineMessage[data-playback-state="arrived"] .timelineNumber,.timelineMessage[data-playback-state="processing"] .timelineNumber{color:#81540e}
+.timelineMessage[data-playback-state="completed"]{color:#40553d}
+.processingCallout .actionBubble{fill:#fffdf7;stroke:#e4d5b4;stroke-width:1}
+.processingCallout .actionText{fill:#725723}
+@media(prefers-reduced-motion:reduce){
+  .app *,.app *::before,.app *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}

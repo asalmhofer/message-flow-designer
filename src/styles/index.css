@@ -4,3 +4,12 @@
 @import './panels.css';
 @import './dialogs.css';
 @import './presentation.css';
+@import './reliability.css';
+@import './editor.css';
+@import './refinement.css';
+@import './studio.css';
+
+@import './inspector.css';
+@import './playback.css';
+@import './workspace.css';
+@import './export.css';

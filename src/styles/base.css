@@ -93,7 +93,8 @@
   .flowItem{flex:0 0 auto;border:1px solid var(--border);border-radius:10px;background:#fff;overflow:hidden;transition:border-color .12s, box-shadow .12s}
   .flowItem.selected{border-color:#60a5fa;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
   .flowItem.activeAnim{border-color:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.15)}
-  .flowSummary{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:7px;align-items:center;padding:6px 8px;cursor:pointer;background:#fff;min-height:42px}
+  .flowSummary{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:7px;align-items:center;padding:8px;cursor:pointer;background:#fff;min-height:42px}
+  .flowSummary .indicators{grid-column:3;justify-content:flex-end;flex-wrap:wrap;min-width:0}
   .flowSummary:hover{background:#f8fafc}
   .flowDragHandle{width:25px;min-width:25px;height:30px;padding:0;justify-content:center;border-color:transparent;background:transparent;color:#94a3b8;cursor:grab;font-weight:900;letter-spacing:-4px;line-height:1}
   .flowDragHandle:hover{background:#eef2ff;border-color:#bfdbfe;color:#2563eb}
@@ -106,7 +107,7 @@
   .timingBadge{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:2px 6px;background:#f1f5f9;color:#475569;font-size:10px;font-weight:750;white-space:nowrap}
   .timingBadge.withPrevious{background:#dcfce7;color:#166534}
   .flowTitle{min-width:0;font-size:12px;line-height:1.18}
-  .flowTitle b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);font-size:12px;font-weight:750}
+  .flowTitle b{display:block;white-space:normal;overflow-wrap:anywhere;color:var(--text);font-size:12px;font-weight:750;line-height:1.35}
   .flowTitle span{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
   .indicators{display:flex;gap:4px;color:var(--muted);font-size:12px;align-items:center;white-space:nowrap;min-width:max-content}
   .flowItem.hiddenConnector .flowTitle b,.flowItem.hiddenConnector .flowTitle span{opacity:.55}
@@ -155,9 +156,9 @@
 
   .feedbackButton{
     position:absolute;
-    left:14px;
-    bottom:14px;
-    z-index:35;
+    right:14px;
+    top:14px;
+    z-index:8;
     display:inline-flex;
     align-items:center;
     gap:8px;
@@ -211,15 +212,13 @@
   .contextMenu button{width:100%;justify-content:flex-start;border:0;background:transparent;border-radius:8px;padding:9px}
   .contextMenu button:hover{background:#f1f5f9}
   .componentShape{stroke-linejoin:round;filter:url(#softShadow)}
-  .textItemShape{filter:none!important;stroke:transparent!important;fill:transparent!important}
-  .componentGroup.selected .textItemShape{stroke:#2563eb!important;stroke-width:1.8!important;stroke-dasharray:5 4!important}
+  .textItemShape{filter:none!important}
   .textItemText{font-size:18px;font-weight:750}
   .packageComponent .packageShape{fill-opacity:.12}
   .packageComponent.selected .packageShape{fill-opacity:.18}
   .packageSeparator{stroke:#94a3b8;stroke-width:1.6;vector-effect:non-scaling-stroke;pointer-events:none}
   .packageText{font-size:13px;font-weight:800}
   .componentText{font-size:14px;font-weight:650;dominant-baseline:middle;text-anchor:middle;pointer-events:none;user-select:none;white-space:pre-wrap}
-  .componentGroup.selected .componentShape{stroke:#2563eb!important;stroke-width:2.5!important}
   .componentGroup.activeSource .componentShape{stroke:#f59e0b!important;stroke-width:3!important}
   .componentGroup.activeTarget .componentShape{stroke:#16a34a!important;stroke-width:3!important}
   .componentGroup.processing .componentShape{stroke:#7c3aed!important;stroke-width:3.5!important;filter:url(#glow)}

@@ -9,7 +9,6 @@ export function importProjectFromText(text){
   const raw = JSON.parse(text);
   const project = migrateProject(raw);
   const validation = validateProject(project);
-  if(!validation.valid) throw new Error(validation.errors.join('
-'));
+  if(!validation.valid) throw new Error(validation.errors.join('\n'));
   return project;
 }

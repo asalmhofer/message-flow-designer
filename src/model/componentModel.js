@@ -21,6 +21,8 @@ export function createComponent(data = {}){
     position: normalizePosition(data.position || { x: data.x ?? 80, y: data.y ?? 80 }),
     size: normalizeSize(data.size || { width: data.width ?? DEFAULT_COMPONENT_SIZE.width, height: data.height ?? DEFAULT_COMPONENT_SIZE.height }),
     style: {
+      ...Object.fromEntries(['borderStyle','fillOpacity','borderOpacity','textOpacity','fontSize','fontWeight','textAlign'].filter(key=>data[key]!==undefined).map(key=>[key,data[key]])),
+      ...data.style,
       fillColor: data.style?.fillColor || data.fillColor || '#ffffff',
       borderColor: data.style?.borderColor || data.borderColor || '#334155',
       textColor: data.style?.textColor || data.textColor || '#0f172a',

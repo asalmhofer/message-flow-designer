@@ -59,7 +59,7 @@ test('runtime exposes resized panel and radio play mode controls', () => {
 
 test('runtime supports requested presentation and editing shortcuts', () => {
   const runtime = readFileSync(runtimePath, 'utf8');
-  assert.match(indexHtml, /data-shape="text"/);
+  assert.match(indexHtml, /id="elementLibrary"/);
   assert.match(runtime, /shape === 'text'/);
   assert.match(runtime, /ctrlDragCopy/);
   assert.match(runtime, /e\.button === 2/);

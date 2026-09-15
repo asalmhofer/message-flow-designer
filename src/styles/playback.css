@@ -1,0 +1,32 @@
+/* Fixed transport slots keep status changes from moving the controls. */
+.animationBar{display:grid;grid-template-columns:repeat(4,36px) minmax(0,1fr) 36px;width:430px;height:52px;box-sizing:border-box;align-items:center}
+.playbackSummary{display:flex;flex-direction:column;justify-content:center;min-width:0;max-width:none;height:36px;line-height:16px;padding:0 7px;font-variant-numeric:tabular-nums}
+.playbackSummary>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#playbackCounter{font-weight:600}
+#playbackPhase{font-size:10px}
+.playbackOptions{min-width:0}
+.playbackOptions summary{width:36px;box-sizing:border-box}
+.playbackOptions .playbackPanel{max-height:calc(100dvh - 160px);overflow-y:auto;overscroll-behavior:contain;gap:10px}
+.playbackHint{margin:0;font-size:11px;line-height:1.5;color:var(--muted)}
+.presentationDisplayOption{display:flex;gap:10px;align-items:center;font-size:12px;line-height:1.5;cursor:pointer}
+.presentationDisplayOption input{flex:0 0 16px;margin:0}
+.presentation .animationBar{height:56px}
+.presentationEyebrow{min-height:27px}
+#presentationCounter{flex:0 0 180px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.phaseChip{box-sizing:border-box;width:152px;flex:0 0 152px;text-align:center;white-space:nowrap}
+.presentationSummary h1{height:2.4em;min-height:2.4em}
+.processingCallout{pointer-events:none}
+.processingCallout .actionText{font-size:12px;font-weight:600}
+.processingCallout .actionHeading{font-size:11px;font-weight:700;fill:#64748b}
+.actionLeader{stroke:#94a3b8;stroke-width:1;fill:none;vector-effect:non-scaling-stroke}
+@media(max-width:700px){
+  .animationBar{width:370px;max-width:calc(100% - 28px)}
+  .playbackSummary{display:flex;padding:0 3px}
+  #presentationCounter{flex-basis:146px;font-size:11px}
+  .phaseChip{width:138px;flex-basis:138px;font-size:10px}
+  .presentationEyebrow{gap:6px}
+}
+@media(max-width:420px){
+  .animationBar{gap:3px;grid-template-columns:repeat(4,32px) minmax(0,1fr) 32px}
+  .animationBar>button,.animationBar>.iconOnlyAnim,.playbackOptions summary{width:32px;min-width:32px}
+}

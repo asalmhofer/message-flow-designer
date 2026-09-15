@@ -25,6 +25,7 @@ export function createConnector(data = {}){
     bendPoints: Array.isArray(data.bendPoints) ? data.bendPoints.map(normalizePoint) : (data.controlPoint ? [normalizePoint(data.controlPoint)] : []),
     labelPosition: data.labelPosition ? normalizePoint(data.labelPosition) : null,
     style: {
+      ...data.style,
       color: data.style?.color || '#475569',
       thickness: Number(data.style?.thickness ?? 2.2),
       textColor: data.style?.textColor || '#0f172a',

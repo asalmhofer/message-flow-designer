@@ -1,0 +1,93 @@
+/* Inspector and flow cards share the application's quiet indigo accents. */
+.toolbar .brand{background:#eef0ff;color:#6366b5;border-radius:10px}
+.toolbar .brand .uiIcon{width:24px;height:24px;flex-basis:24px}
+.propertiesCard .cardHead{display:none}
+.propertiesCard .properties{padding:18px 18px 24px;gap:18px}
+.inspectorSection{display:flex;flex-direction:column;gap:13px;padding:0 0 18px;border-bottom:1px solid #e9edf2;min-width:0}
+.inspectorSection h3{font-size:13px;font-weight:650;margin:0;color:#344156}
+.inspectorHeading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.inspectorHeading>span{font-size:11px;color:#68778d}
+.inspectorHeading button{background:none;border:0;color:#5966a8;font-size:11px;padding:3px;min-height:26px}
+.inspectorSection .formRow{gap:6px}
+.properties .formRow label,.inspectorField{font-size:12px;color:#56647a}
+.properties input,.properties select,.properties textarea{min-width:0;width:100%;border-radius:7px;min-height:35px;border:1px solid #dfe5ed;padding:7px 9px;background:#fafbfd;color:#27354a;font-size:12px}
+.properties input:focus,.properties select:focus,.properties textarea:focus{outline:2px solid #c7d2fe;outline-offset:1px}
+.inspectorField{display:flex;flex-direction:column;gap:7px;min-width:0}
+.inspectorColumns{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.inspectorAdvanced{font-size:12px;color:#536278}
+.inspectorAdvanced summary{cursor:pointer;padding:6px 0;font-weight:550}
+.inspectorAdvanced[open]>summary{margin-bottom:12px}
+.inspectorAdvanced .formRow+.formRow{margin-top:12px}
+.inspectorSelection{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.inspectorSelection span,.inspectorEmpty{font-size:12px;line-height:1.6;color:#65758b}
+.inspectorColorRow{display:grid;grid-template-columns:55px minmax(0,1fr);align-items:center;gap:12px;font-size:12px;color:#56647a}
+.colorTrigger{display:flex;align-items:center;gap:9px;width:100%;min-width:0;background:#fff;border:1px solid #dfe5ed;border-radius:7px;padding:7px 9px;min-height:36px;font-size:11px;color:#344156}
+.colorTrigger:hover{border-color:#9ba9cc;background:#fbfcff}
+.colorChip{position:relative;display:block;width:19px;height:19px;flex:0 0 19px;border:1px solid #cbd5e1;border-radius:4px;background:repeating-conic-gradient(#e2e8f0 0% 25%,#fff 0% 50%) 50%/8px 8px}
+.colorChip:after{content:'';position:absolute;inset:0;background:var(--chip);border-radius:3px}
+.colorPercent{margin-left:auto;color:#718096;font-size:10px}
+.borderOptions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+.borderOptions button{padding:9px 3px 7px;display:flex;flex-direction:column;gap:7px;align-items:center;font-size:10px;background:#fff;border:1px solid #e1e6ed;border-radius:7px;color:#5b6980}
+.borderOptions button[aria-pressed="true"]{background:#eef2ff;border-color:#a5b4df;color:#414c99}
+.borderSample{width:24px;height:2px;border-top:2px solid currentColor}
+.borderSample.dashed{border-top-style:dashed}.borderSample.dotted{border-top-style:dotted}.borderSample.none{border-top-color:transparent}
+.inspectorPicker{position:fixed;z-index:2200;width:276px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow:auto;border:1px solid #dce2ed;background:#fff;padding:16px;border-radius:12px;box-shadow:0 12px 45px #27334a28;color:#344156;font-size:12px;display:flex;flex-direction:column;gap:14px}
+.pickerHeading{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}
+.pickerHeading button{width:28px;height:28px;padding:4px;border:0;background:#f3f5fa}
+.pickerPalette{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}
+.pickerPalette button{height:27px;min-width:0;border:1px solid #0f172a20;border-radius:5px;background:var(--chip);padding:0}
+.pickerPalette button:hover{outline:2px solid #a5b4fc;outline-offset:2px}
+.pickerLabel{color:#718096;font-size:11px;margin-bottom:-8px}
+.pickerCustom{display:flex;align-items:end;gap:10px}
+.pickerCustom input[type=color]{width:44px;height:36px;padding:3px;border:1px solid #dfe5ed;border-radius:6px;cursor:pointer;background:#fff}
+.pickerCustom label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0;font-size:10px;color:#718096}
+.pickerCustom input[type=text]{width:100%;min-width:0;border:1px solid #dfe5ed;border-radius:6px;height:36px;padding:6px 9px;font-size:12px;color:#344156}
+.pickerOpacity{display:grid;grid-template-columns:1fr auto;gap:8px;font-size:11px;color:#65758b}
+.pickerOpacity input{grid-column:1/-1;width:100%;accent-color:#6366b5}
+.pickerFooter{display:flex;gap:8px;justify-content:flex-end;border-top:1px solid #e9edf2;padding-top:12px}
+.pickerFooter button,.transparentChoice{font-size:12px;padding:7px 12px;border-radius:7px}
+.pickerFooter .primary{background:#5667bd;color:#fff;border-color:#5667bd}
+.transparentChoice{background:#f8fafc;color:#536278}
+.flowPanelBody{padding:4px 12px 16px}
+.flowList{position:relative;gap:9px}
+.flowItem{border:1px solid #e1e6ed;border-radius:9px;background:#fff;box-shadow:none;margin:0}
+.flowItem.selected{background:#f6f8ff;border:1px solid #adbce4;box-shadow:0 0 0 1px #e5ebfa}
+.flowItem.hiddenConnector{border-style:dashed;background:#fafbfc}
+.flowSummary{padding:10px 9px 0;grid-template-columns:22px 24px minmax(0,1fr) 25px;gap:6px;min-height:52px}
+.flowSummary .flowDragHandle{grid-row:1;touch-action:none;cursor:grab;color:#8c99ac;border:0;background:transparent;min-height:38px;width:22px}
+.flowSummary .flowTitle .flowName{display:block;border:0;padding:0;margin:0;font-size:12px;font-weight:650;color:#27354a;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
+.flowSummary .flowTitle .flowName:hover{background:transparent;border:0}
+.flowSummary .flowTitle .flowRoute{display:block;font-size:11px;color:#6d7c91;line-height:1.5;padding-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flowCardFooter{padding:4px 8px 9px 43px;display:flex;align-items:center;justify-content:space-between;gap:5px}
+.flowTiming{font-size:10px;color:#728197;line-height:1.4}
+.flowCardActions{display:flex;gap:2px;flex-shrink:0}
+.flowCardActions button{width:29px;height:29px;padding:6px;border:0;background:transparent;color:#74829a;border-radius:6px}
+.flowCardActions button:hover{background:#e9eef8;color:#4c60a3}
+.flowCardActions button[aria-pressed="false"]{color:#9aa5b7}
+.flowCardActions .uiIcon{width:16px;height:16px}
+.stepReadout{font-size:12px;color:#536278;line-height:1.55;overflow-wrap:anywhere}
+.stepReadout strong{font-size:11px;font-weight:600;color:#718096}.stepReadout p{margin:4px 0 12px;white-space:pre-wrap}
+.parallelGroup{gap:9px}.parallelLabel{font-size:10px}
+.flowSorting .flowDropSlot{border:2px dashed #a6b4dc!important;background:#eff3fc!important;box-shadow:none!important}
+.flowDropSlot>*{visibility:hidden}
+.flowFloatingCard{position:fixed;pointer-events:none;z-index:2100;background:#fff!important;border:1px solid #879dcc!important;box-shadow:0 14px 36px #273b6638!important;transform:rotate(.8deg);opacity:1!important;max-height:75vh;overflow:hidden}
+.flowFloatingCard .flowSummary{background:#fff}
+body.sortingFlow,body.sortingFlow *{cursor:grabbing!important;user-select:none!important}
+.flowEditorDialog{width:min(600px,calc(100vw - 24px));border-radius:14px;border-color:#dce3ed;box-shadow:0 24px 80px #1e293b33}
+.flowEditorHead{padding:20px 22px 16px;background:#fff;border-bottom:1px solid #e9edf2}
+.flowEditorHead h3{font-size:17px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.flowEditorBody{padding:18px 22px}
+.flowEditorContent{gap:16px}
+.flowEditorSection{border:0;padding:0;border-radius:0;box-shadow:none;gap:14px;background:transparent}
+.flowEditorSection input,.flowEditorSection select,.flowEditorSection textarea{border-radius:7px;font-size:13px;padding:8px 10px;border-color:#dce3ed;background:#fafbfd;min-height:37px}
+.flowEditorSection label{font-size:12px;color:#65758b;font-weight:500}
+.flowEditorSection .formRow{display:flex;flex-direction:column;align-items:stretch;gap:6px}
+.flowEditorAdvanced{border-top:1px solid #e9edf2;padding-top:12px;font-size:12px;color:#596a81}
+.flowEditorAdvanced summary{cursor:pointer;font-weight:550;padding:4px 0}
+.flowEditorAdvanced[open] summary{margin-bottom:14px}
+.flowEditorFooter{padding:14px 22px;background:#fff;border-top:1px solid #e9edf2}
+.flowEditorFooter .primary{background:#5667bd;border-color:#5667bd;color:#fff}
+.componentSelectionOutline{vector-effect:non-scaling-stroke}
+@media(pointer:coarse){.flowCardActions button{min-width:40px;height:40px}.flowSummary .flowDragHandle{min-height:44px}.pickerPalette button{height:32px}}
+@media(max-width:600px){.inspectorColorRow{grid-template-columns:1fr;gap:5px}.inspectorColumns{grid-template-columns:1fr}.flowCardFooter{padding-left:10px}.flowEditorSection{grid-template-columns:1fr}.propertiesCard .properties{padding:12px}.flowSummary{grid-template-columns:20px 22px minmax(0,1fr) 22px;gap:3px}.flowTiming{font-size:10px}}
+@media(prefers-reduced-motion:reduce){.flowFloatingCard{transform:none}}

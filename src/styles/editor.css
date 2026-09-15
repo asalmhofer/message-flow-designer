@@ -1,0 +1,107 @@
+/* Drawing workspace: compact chrome, contextual tools and one sidebar pane. */
+.toolbar{height:64px;min-height:64px;flex-wrap:nowrap;align-items:center;padding:8px 16px;gap:10px}
+.toolbar .brand{width:38px;min-width:38px;min-height:38px;height:38px;border:0;background:none;box-shadow:none}
+.brand svg{width:34px;height:34px}
+.documentIdentity{min-width:100px;width:260px;display:flex;flex-direction:column;gap:3px}
+#diagramName{width:100%;padding:3px 5px;font-weight:650;font-size:14px;border-color:transparent;background:transparent;text-overflow:ellipsis}
+#diagramName:hover,#diagramName:focus{border-color:var(--border)}
+#saveStatus{padding-left:6px;font-size:10px;color:var(--muted)}
+#saveStatus.saveError{color:#b45309}
+.historyControls{display:flex;gap:2px;border-left:1px solid var(--border);padding-left:10px}
+.toolbar .historyControls button{font-size:21px;width:34px;justify-content:center;border-color:transparent}
+.toolbar button:disabled{opacity:.4;cursor:default}
+.toolbar .presentAction{margin-left:auto;background:#2563eb;color:#fff;border-color:#2563eb;font-weight:650;min-height:36px;padding:8px 14px}
+.menuPanel a{font-size:12px;padding:10px;color:var(--muted);text-decoration:none}
+.menuPanel a:hover{background:var(--surface-2)}
+.fileOnly .menuPanel{left:0;right:auto}
+.leftCreateToolbar{top:12px;left:12px;border-radius:12px;max-height:calc(100% - 180px);box-shadow:0 3px 14px #0f172a0d}
+.leftTool,.shapeTool{min-height:32px;flex-shrink:0}
+.canvasView{position:absolute;bottom:12px;left:12px;z-index:31;display:flex;align-items:center;gap:2px;padding:4px;border:1px solid var(--border);border-radius:10px;background:#fff;box-shadow:0 3px 14px #0f172a0d}
+.canvasView button,.canvasView summary{height:30px;min-width:30px;padding:5px 7px;border-color:transparent;font-size:12px}
+.canvasView #zoomDisplay{font-size:11px}
+.canvasView .menuPanel{bottom:calc(100% + 10px);top:auto;left:auto;right:0}
+#selectionTools{position:absolute;top:12px;left:78px;z-index:32}
+.drawingHint{position:absolute;left:80px;right:16px;top:14px;z-index:29;width:max-content;max-width:calc(100% - 100px);padding:8px 12px;border:1px solid #bfdbfe;border-radius:9px;background:#eff6ff;color:#1e40af;font-size:12px;pointer-events:none}
+.placementPreview{opacity:.5;pointer-events:none}
+.placementPreview .componentShape{stroke:#2563eb;stroke-dasharray:6 4}
+.componentGroup.flowEndpointSelected .componentShape{stroke:#2563eb!important;stroke-width:2.8!important}
+.componentGroup:focus-visible{outline:none}
+.componentGroup:focus-visible .componentShape{stroke:#2563eb!important;stroke-dasharray:5 3}
+.componentPort{r:5.5}
+.componentPort:focus-visible{outline:none;fill:#2563eb;stroke-width:3}
+.statusBar{bottom:64px;left:16px;max-width:calc(100% - 32px);padding:0;border:0;background:transparent;box-shadow:none;font-size:10px;gap:10px}
+.statusBar #modeStatus{display:none}
+.animationBar{bottom:90px;gap:5px;padding:6px 8px;border-radius:12px;box-shadow:0 3px 14px #0f172a14}
+.animationBar .iconOnlyAnim{width:34px;min-width:34px;height:34px;font-size:17px}
+.sideHead{padding:0 14px;min-height:52px;justify-content:flex-start}
+body:not(.presentation) #sideTitle{display:none}
+.sidebarTabs{display:flex;align-items:stretch;gap:16px;height:52px}
+.sidebarTabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;font-size:13px;font-weight:600;padding:10px 2px;color:var(--muted)}
+.sidebarTabs button[aria-selected="true"]{border-bottom-color:#2563eb;color:#1d4ed8}
+#flowCount{background:#f1f5f9;color:#64748b;border-radius:6px;padding:3px 6px;font-size:10px}
+.sideScroll{padding:0;gap:0;overflow:hidden}
+.flowStepsCard{height:auto;min-height:0;max-height:none;flex:1 1 auto;border:0;border-radius:0;box-shadow:none}
+.flowHelp{font-size:11px;line-height:1.6;color:var(--muted);padding:14px 16px 12px}
+.flowPanelBody{padding:4px 12px 12px}
+.flowList{gap:8px}
+.flowItem{border-color:#e2e8f0;border-radius:9px;overflow:visible;box-shadow:none}
+.flowItem.selected{box-shadow:0 0 0 1px #93c5fd;border-color:#93c5fd}
+.flowSummary{grid-template-columns:20px 24px minmax(0,1fr) 28px;gap:5px;padding:9px 7px;min-height:64px;border-radius:9px}
+.flowSummary .flowTitle{grid-column:3;min-width:0}
+.flowSummary .flowName{width:100%;font-size:12px;font-weight:650;padding:3px 4px;margin-left:-4px;border:1px solid transparent;background:transparent;text-overflow:ellipsis}
+.flowSummary .flowName:hover,.flowSummary .flowName:focus{background:#fff;border-color:#bfdbfe}
+.flowSummary .flowTitle span{font-size:10px;padding-top:2px;line-height:1.3}
+.flowSummary .flowDragHandle{width:20px;min-width:20px;font-size:13px;letter-spacing:-3px;padding:0;height:30px}
+.seqBadge{min-width:24px;padding:4px;font-size:10px}
+.flowSummary .expandStep{width:28px;min-width:28px;height:30px;padding:0;justify-content:center;border-color:transparent;color:#64748b;font-size:17px}
+.parallelGroup{border-left:3px solid #60a5fa;margin:0 0 0 3px;padding:0 0 0 9px;display:flex;flex-direction:column;gap:8px}
+.parallelLabel{font-size:10px;font-weight:650;color:#2563eb;padding:2px 0}
+.stepDetails{padding:12px;border-top:1px solid #e2e8f0;background:#f8fafc;border-radius:0 0 9px 9px;display:grid;gap:12px}
+.stepDetails .formRow{grid-template-columns:54px minmax(0,1fr)}
+.stepDetails .formRow label{font-size:11px}
+.stepDetails input,.stepDetails select,.stepDetails textarea{font-size:12px}
+.stepDetails textarea{resize:vertical;min-height:62px}
+.stepDetails .detailActions{gap:5px}
+.stepDetails .detailActions button{font-size:11px;flex:1 1 auto;min-height:30px}
+.stepImage{max-width:100%;max-height:140px;display:block;object-fit:contain;margin:auto;border-radius:6px}
+.attachmentLabel{color:var(--muted);font-size:11px}
+.stepDetails .moveStepActions{display:flex;gap:6px}
+.stepDetails .moveStepActions button{font-size:11px;min-height:30px;flex:1;justify-content:center}
+.flowFooter{display:flex;align-items:center;gap:12px;border-top:1px solid #e2e8f0;padding:10px 14px;flex-shrink:0}
+.flowFooter button{font-size:11px}
+.flowFooter span{font-size:10px;color:var(--muted)}
+.flowEmpty{padding:12px 4px;color:var(--muted);font-size:12px;line-height:1.7}
+.sidePanel .panelToggleBtn{top:12px;bottom:auto;left:auto;right:10px;width:28px;height:28px;min-width:28px;font-size:12px;box-shadow:none;padding:0;justify-content:center}
+.flowPanelClosed .panelToggleBtn,.presentation.panelClosed .panelToggleBtn{top:12px;bottom:auto;left:8px;right:auto}
+.sideHead{padding-right:44px}
+.toolbar .presentAction .label{display:inline}
+.propertiesCard{border:0;border-radius:0;box-shadow:none;overflow:auto;height:100%;padding-bottom:40px}
+.propertiesCard .cardHead{background:#fff;padding:16px;border:0}
+.propertiesCard .properties{padding:0 16px 16px;gap:14px}
+.flowPanelClosed .sidebarTabs{display:none}
+.presentation .canvasView,.presentation #selectionTools,.presentation .sidebarTabs,.presentation .drawingHint{display:none!important}
+.presentation .documentIdentity{width:auto;max-width:60%}
+.presentation #diagramName{color:#fff;pointer-events:none}
+.presentation #saveStatus{display:none}
+.presentation .toolbar .presentAction{background:#2563eb;border-color:#3b82f6}
+.presentation .animationBar{bottom:12px}
+@media(max-width:980px){
+  .toolbar{padding:8px 10px;gap:7px;height:64px;min-height:64px}
+  .documentIdentity{width:220px}
+  .animationBar{max-width:calc(100% - 28px);bottom:90px}
+  .animationBar .speedControl{gap:4px;font-size:11px;padding:4px}
+  .animationBar .speedControl input{width:65px}
+}
+@media(max-width:700px){
+  .toolbar{gap:5px}
+  .documentIdentity{width:140px;min-width:70px;flex:1}
+  .toolbar .brand{display:none}
+  .toolbar .presentAction{padding:8px}
+  .main{grid-template-columns:minmax(0,1fr) min(var(--side-w),45vw)}
+  .sidePanel{min-width:0}
+  .sideHead{padding:0 8px}
+  .sidebarTabs{gap:10px}
+  .flowPanelBody{padding:4px 7px}
+  .flowFooter span,.flowHelp{display:none}
+  .leftCreateToolbar{max-height:calc(100% - 210px)}
+}

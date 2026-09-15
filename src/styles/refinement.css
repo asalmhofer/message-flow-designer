@@ -1,0 +1,136 @@
+/* Shared visual language for authoring and presenting. */
+:root{--border:#dce2eb;--surface-2:#f4f6fa;--muted:#657187;--shadow:0 5px 20px #17203312}
+button,summary{transition:background .12s,border-color .12s;color:var(--text)}
+button:disabled{opacity:.4;cursor:default}
+.uiIcon{width:18px;height:18px;flex:0 0 18px;display:block;pointer-events:none}
+[data-icon]{display:inline-flex;align-items:center;justify-content:center}
+.toolbar{box-shadow:none}
+.toolbar .brand{opacity:.9}
+.toolbar .historyControls button,.toolbar .menuGroup summary{min-height:36px}
+.toolbar .presentAction{border-radius:8px;gap:8px}
+.canvasWrap{background:#f5f7fb}
+.leftCreateToolbar{box-shadow:0 2px 10px #17203308;background:#fff;border-radius:10px;gap:5px;padding:6px 4px}
+.leftTool,.shapeTool{height:36px;min-height:36px;width:36px;min-width:36px;border-radius:7px}
+.shapeTool svg *{stroke-width:1.6;fill:#f3f6fb}
+.shapeTool.active svg *{stroke:#2563eb;fill:#eff6ff}
+.leftCreateTitle{font-weight:650;font-size:8px;margin:5px 0}
+.canvasView{box-shadow:none}
+.canvasView button,.canvasView summary{height:34px;min-width:34px}
+.statusBar{bottom:58px;color:#68758b;font-size:11px}
+.componentShape{filter:none}
+.componentText{font-size:14px;font-weight:600}
+.componentText.textItemText{font-size:18px}
+.componentText.packageText{font-size:14px}
+.componentPort{filter:none}
+.flowLabelGroup{cursor:grab;outline:none}
+.flowLabelGroup:active{cursor:grabbing}
+.flowLabelBackground{fill:#fff;fill-opacity:.97;stroke:#dce2eb;stroke-width:1;vector-effect:non-scaling-stroke}
+.flowLabelGroup:hover .flowLabelBackground,.flowLabelGroup.selected .flowLabelBackground,.flowLabelGroup:focus-visible .flowLabelBackground{fill:#eff6ff;stroke:#60a5fa;stroke-width:1.5}
+.flowLabelGroup:focus-visible .flowLabelBackground{stroke:#2563eb;stroke-width:2}
+.flowLabelGroup .flowLabel{font-size:inherit;font-weight:550;stroke:none;dominant-baseline:middle;pointer-events:none}
+.labelSequence{fill:#657187;font-weight:700;pointer-events:none}
+.focusFlow .flowPath:not(.selected),.focusFlow .flowLabelGroup:not(.selected){opacity:.18}
+.focusFlow .componentGroup:not(.flowEndpointSelected){opacity:.35}
+.flowSummary{padding:7px;min-height:62px}
+.flowSummary .flowName{font-size:13px;font-weight:600}
+.flowSummary .flowTitle span{font-size:11px;color:#68758b}
+.flowSummary .flowDragHandle{width:24px;min-width:24px;height:32px;letter-spacing:0}
+.flowSummary .expandStep{width:30px;min-width:30px;height:32px}
+.flowDragHandle .uiIcon{stroke-width:3}
+.flowSummary{grid-template-columns:24px 24px minmax(0,1fr) 30px}
+.flowItem{border-color:#e5e9f0}
+.flowItem.selected{box-shadow:none;border-color:#93b8f7}
+.flowHelp{font-size:12px;line-height:1.6}
+.stepDetails{background:#f7f9fc}
+.stepDetails .formRow label,.formRow label{font-size:12px}
+.stepDetails .detailActions button,.stepDetails .moveStepActions button{min-height:34px;font-size:12px}
+.propertyHint{font-size:12px;line-height:1.6;color:var(--muted)}
+.seqBadge{font-weight:650}
+.sidePanel .panelToggleBtn{border-radius:7px;width:32px;height:32px;top:10px}
+.animationBar{left:auto;right:14px;bottom:14px;transform:none;gap:5px;padding:5px;flex-wrap:nowrap;width:max-content;max-width:calc(100% - 246px);border-radius:10px;box-shadow:none;background:#fff;overflow:visible}
+.animationBar button,.animationBar .iconOnlyAnim{width:36px;min-width:36px;height:36px;padding:0;justify-content:center;border-radius:7px;background:transparent;border-color:transparent;box-shadow:none}
+.animationBar .iconOnlyAnim.primaryAnim{background:#2563eb;color:#fff;border-color:#2563eb;box-shadow:none}
+.animationBar .iconOnlyAnim.primaryAnim:hover{background:#1d4ed8;border-color:#1d4ed8}
+.playbackSummary{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:1.5;color:var(--muted);padding:0 6px}
+.playbackOptions summary{height:36px;min-width:36px;justify-content:center;padding:8px;border-color:transparent}
+.playbackOptions .playbackPanel{top:auto;bottom:calc(100% + 12px);left:auto;right:0;width:310px;max-width:min(310px,85vw);gap:12px;padding:16px;border-radius:12px}
+.playbackSectionTitle{font-size:11px;font-weight:650;color:var(--muted)}
+.playbackPanel .phaseControls{display:flex;gap:8px}
+.playbackPanel button{width:auto;height:36px;min-height:36px;padding:6px 8px;justify-content:center;border:1px solid var(--border);font-size:11px}
+.playbackPanel .phaseControls button{flex:1}
+.playbackPanel .uiIcon{width:16px;height:16px;flex-basis:16px}
+.playbackPanel .playModeGroup{width:100%;border-radius:7px;background:#f3f5f9;padding:3px}
+.playbackPanel .playModeOption{flex:1;justify-content:center;min-height:34px;padding:7px 12px;border-radius:5px;font-size:12px}
+.playbackPanel .playModeGroup{height:auto}
+.playbackPanel .playModeOption input{position:static;opacity:1;pointer-events:auto;width:14px;height:14px;margin:0;accent-color:#2563eb}
+.playbackPanel .speedControl{background:none;border:0;padding:0;gap:10px;font-size:12px}
+.playbackPanel .speedControl input{width:100%;flex:1;min-width:40px}
+.playbackPanel .loopControl{font-size:12px;gap:8px;min-height:28px}
+.playbackPanel input[type="checkbox"]{width:16px;height:16px;accent-color:#2563eb}
+.playbackPanel .menuDivider{margin:0}
+.presentationSummary{position:absolute;top:26px;left:32px;right:32px;pointer-events:none;color:#172033}
+.presentationEyebrow{display:flex;align-items:center;gap:12px;font-size:12px;font-weight:600;color:#64748b}
+.phaseChip{font-size:11px;color:#2563eb;background:#eff6ff;border:1px solid #dbeafe;border-radius:6px;padding:4px 8px}
+.presentationSummary h1{font-size:clamp(20px,2.2vw,30px);line-height:1.2;font-weight:650;letter-spacing:-.025em;margin:12px 0 8px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.presentationSummary p{font-size:13px;line-height:1.5;color:#657187;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.presentation .toolbar{background:#142039;border-color:#142039}
+.presentation .toolbar .brand{background:transparent}
+.presentation .main{background:#fff}
+.presentation .sidePanel{background:#f7f9fc;border-left-color:#e2e8f0;color:#172033}
+.presentation .sideHead{background:#f7f9fc;color:#172033;border-color:#e2e8f0}
+.presentation .sideScroll{padding:0;overflow:hidden}
+.presentation .presentationImageCard{border:0;border-radius:0;background:transparent;color:inherit;box-shadow:none;overflow:auto;display:block!important}
+.storyDetails{padding:22px 20px;border-bottom:1px solid #e2e8f0}
+.storyEyebrow{display:block;font-size:11px;color:#657187;font-weight:650;margin-bottom:16px}
+.storyMessage + .storyMessage{margin-top:22px;padding-top:18px;border-top:1px solid #e2e8f0}
+.storyMessage h3{font-size:16px;margin:0 0 8px;overflow-wrap:anywhere}
+.storyMessage p{font-size:14px;line-height:1.65;margin:5px 0 18px;white-space:pre-wrap;overflow-wrap:anywhere}
+.storyMessage p:last-child{margin-bottom:0}
+.storyLabel{font-size:11px;font-weight:650;color:#657187}
+.storyMessage .storyNote,.storyMessage .storyRoute{font-size:12px;color:#657187}
+.storyImage{margin:18px 0 0}
+.storyImage img{display:block;width:100%;height:auto;max-height:230px;object-fit:contain;border-radius:8px;background:#fff;border:1px solid #e2e8f0}
+.storyImage figcaption{font-size:11px;color:#657187;line-height:1.5;margin-top:6px}
+.timelineHead{padding:20px 20px 10px}
+.timelineHead h3{font-size:13px;margin:0 0 6px}
+.timelineHead span{font-size:11px;color:#657187}
+.presentationTimeline{display:grid;gap:4px;padding:0 12px 20px}
+.timelineMessage{padding:10px 8px;min-height:48px;border:1px solid transparent;border-radius:8px;background:none;white-space:normal;text-align:left;gap:10px;line-height:1.45;align-items:center}
+.timelineMessage:hover{background:#edf1f7;border-color:transparent}
+.timelineMessage[aria-current="step"]{background:#eaf2ff;border-color:#bcd3fa;color:#1d4ed8}
+.timelineNumber{font-size:11px;font-weight:650;min-width:26px;text-align:center;color:#657187}
+.timelineMessage[aria-current="step"] .timelineNumber{color:#1d4ed8}
+.timelineText{font-size:12px;overflow-wrap:anywhere;min-width:0}
+.timelineText small{display:block;color:#657187;font-size:10px;margin-top:2px}
+.presentation .animationBar{left:50%;right:auto;bottom:20px;transform:translateX(-50%);max-width:calc(100% - 32px);background:#142039;border-color:#24314a;color:#fff;padding:7px;box-shadow:0 5px 18px #17203312}
+.presentation .animationBar button{color:#e2e8f0}
+.presentation .animationBar .primaryAnim{background:#2563eb;color:#fff}
+.presentation .playbackSummary{color:#c4cedd}
+.presentation .playbackOptions summary{background:transparent;color:#c4cedd;border:0}
+.presentation .playbackPanel{background:#fff;color:#172033;border-color:#dce2eb}
+.presentation .playbackPanel button{background:#fff;color:#172033;border-color:#dce2eb}
+.presentation .playbackPanel .playModeGroup{background:#f3f5f9;border-color:#dce2eb}
+.presentation .playbackPanel .playModeOption{color:#657187}
+.presentation .playbackPanel .playModeOption.active{background:#dbeafe;color:#1d4ed8;box-shadow:none}
+.presentation .playbackPanel .speedControl,.presentation .playbackPanel .speedDisplay{color:#172033}
+.presentation .componentShape{filter:none}
+.presentation .componentGroup.processing .componentShape{filter:none}
+.presentation .flowPath.active,.presentation .activeConnectionOverlay{filter:none}
+.presentation .activeConnectionOverlay{stroke-width:3.5}
+.presentation .messageToken{filter:none}
+.presentation #labelsLayer{display:none}
+@media(max-width:1100px){
+  .animationBar{bottom:76px;max-width:calc(100% - 28px)}
+  .playbackSummary{max-width:145px}
+  .presentation .animationBar{bottom:16px}
+  .presentationSummary{left:24px;right:24px;top:22px}
+}
+@media(max-width:700px){
+  .playbackSummary{display:none}
+  .animationBar{bottom:76px}
+  .storyDetails{padding:16px 12px}
+  .timelineHead{padding:16px 12px 10px}
+  .presentationSummary{left:16px;right:16px}
+  .presentationSummary h1{font-size:19px}
+}
+@media(prefers-reduced-motion:reduce){button,summary{transition:none}}

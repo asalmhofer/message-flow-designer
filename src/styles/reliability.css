@@ -1,0 +1,24 @@
+[hidden]{display:none!important}
+.feedbackButton{position:fixed;z-index:90;padding:6px 10px;min-height:30px;font-size:12px}
+.toolbar{padding-right:126px}
+.leftCreateToolbar{width:54px;padding-inline:3px;overflow-x:hidden;scrollbar-width:thin}
+.leftCreateTitle{font-size:8px;letter-spacing:.02em}
+.animationBar{flex-wrap:wrap;justify-content:center;overflow:visible;width:max-content;max-width:calc(100% - 24px)}
+.animationBar #presentationBtn{font-size:12px;min-height:34px;box-shadow:none;animation:none;padding-inline:10px}
+.statusBar{left:70px;max-width:calc(100% - 80px);flex-wrap:wrap;gap:4px 10px;border-radius:10px;bottom:112px;font-size:11px}
+.saveError{color:#b45309;font-weight:700}
+.loopControl{display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap}
+.storageNotice{position:absolute;top:10px;left:70px;right:10px;z-index:25;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;background:#fffbeb;border:1px solid #f59e0b;border-radius:10px;color:#78350f;font-size:12px}
+.storageNotice span:first-child{flex:1 1 200px}
+.storageNotice button{font-size:12px}
+button:focus-visible,summary:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+@media(max-width:980px){
+  .toolbar{padding-right:48px}
+  .feedbackButton span{display:none}
+  .feedbackButton{right:7px;top:10px;padding:7px}
+  .speedControl{padding:4px 6px}
+  .animationBar .barDivider{display:none}
+  .animationBar{gap:5px;padding:6px}
+  .animationBar #presentationBtn .label{display:none}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

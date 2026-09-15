@@ -1,6 +1,3 @@
-import { DEFAULT_SCHEMA_VERSION } from './config/constants.js';
-import { createStore } from './state/store.js';
-import { createInitialAppState } from './model/appState.js';
 import { registerDefaultShapes } from './registry/shapeRegistry.js';
 import { registerDefaultConnectorTypes } from './registry/connectorRegistry.js';
 import { registerDefaultTools } from './registry/toolRegistry.js';
@@ -17,9 +14,6 @@ function main(){
   registerDefaultShapes();
   registerDefaultConnectorTypes();
   registerDefaultTools();
-
-  const store = createStore(createInitialAppState({ schemaVersion: DEFAULT_SCHEMA_VERSION }));
-  window.MessageFlowDeveloperAPI = Object.freeze({ store });
 
   bootstrapLegacyApp();
 }

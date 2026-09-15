@@ -1,5 +1,7 @@
-(function(){
+globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
   'use strict';
+  if(document.getElementById('app')?.dataset.initialized) return;
+  document.getElementById('app').dataset.initialized = 'true';
 
   const STORAGE_KEY = 'event-flow-designer-state-v1';
   const HISTORY_LIMIT = 60;
@@ -8,7 +10,12 @@
   const MAX_ZOOM = 3.2;
   const MIN_MOVE_DURATION = 550;
   const MAX_MOVE_DURATION = 2600;
-  const SHAPES = ['package','text','roundedRectangle','rectangle','ellipse','diamond','hexagon','triangle','pentagon','trapezoid','parallelogram','cylinder','queue','document','note','cloud','actor'];
+  const elements = globalThis.MessageFlowElements;
+  const SHAPES = elements.entries.map(e => e.id);
+  let library = null;
+  let appearance = null;
+  let flowReorder = null;
+  let exportDialog = null;
   const LEGACY_PORT_DEFS = [
     ['top25','Top 25%','top',0.25], ['top50','Top center','top',0.50], ['top75','Top 75%','top',0.75],
     ['right25','Right 25%','right',0.25], ['right50','Right center','right',0.50], ['right75','Right 75%','right',0.75],
@@ -19,6 +26,11 @@
     ['top','Top','width'], ['right','Right','height'], ['bottom','Bottom','width'], ['left','Left','height']
   ];
   const $ = (id) => document.getElementById(id);
+  const icon = globalThis.MessageFlowIcons.svg;
+  const textMeasure = document.createElement('canvas').getContext('2d');
+  let labelPlacements = new Map();
+  let editorViewport = null;
+  let lastLabelClick = null;
 
   const els = {
     body: document.body,
@@ -30,6 +42,7 @@
     gridRect: $('gridRect'),
     connectionsLayer: $('connectionsLayer'),
     componentsLayer: $('componentsLayer'),
+    labelsLayer: $('labelsLayer'),
     overlayLayer: $('overlayLayer'),
     emptyHint: $('emptyHint'),
     emptyExampleBtn: $('emptyExampleBtn'),
@@ -56,7 +69,6 @@
     importInput: $('importInput'),
     fillColor: $('fillColor'),
     lineColor: $('lineColor'),
-    shapeButtons: Array.from(document.querySelectorAll('.shapeTool')),
     connectionStyleSelect: $('connectionStyleSelect'),
     modeSelect: $('modeSelect'),
     speedSelect: $('speedSelect'),
@@ -67,21 +79,28 @@
     panModeBtn: $('panModeBtn')
   };
 
+  const documents = globalThis.MessageFlowDocuments;
+  const autosave = documents.createAutosaveRepository(() => localStorage, STORAGE_KEY);
+  let saveError = '';
   let state = loadInitialState();
   let history = [];
   let historyIndex = -1;
   let clipboard = null;
   let drag = null;
+  let lastComponentClick = null;
+  let placement = null;
+  let sidebarTab = 'flow';
   let connectSourceId = null;
   let connectSourcePortId = null;
   let connectChosenStyle = null;
   let connectPreviewPoint = null;
-  let connectionChoiceOverlay = null;
   let suppressHistory = false;
   let toastTimer = null;
   let activeAnimationFrame = null;
+  const motion = globalThis.MessageFlowMotion;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const feedback = {kind:null,elapsed:0,duration:0,started:0,frame:null};
   let inlineEditor = null;
-  let flowEditorOriginal = null;
   let flowEditorOriginalAll = null;
   let currentFileName = state.settings.diagramFileName || '';
 
@@ -90,12 +109,18 @@
     paused: false,
     index: -1,
     phase: 'stopped',
+    phaseInspection: false,
+    manualWaiting: false,
     completed: new Set(),
     token: null,
     pathCache: null,
     startTime: 0,
     elapsedBeforePause: 0,
+    transferProgress: 0,
+    transferDuration: 0,
     autoTimer: null,
+    autoDeadline: 0,
+    autoRemaining: 0,
     measurePathEl: null
   };
 
@@ -142,21 +167,27 @@
       settings: {
         animationMode: 'auto',
         animationSpeed: 50,
+        loopAnimation: true,
         autoContinueAfterArrival: false,
         autoContinueDelay: 1200,
         defaultConnectionStyle: 'arc',
         showGrid: true,
         snapToGrid: true,
+        focusSelectedFlow: false,
         activeCanvasMode: 'select',
         zoom: 1,
         panX: 80,
         panY: 70,
         presentationImagePanelOpen: true,
         showInactiveConnectionsInPresentation: true,
-        diagramFileName: 'event-flow-designer.json',
+        showTokenMessageInPresentation: true,
+        showProcessingActionInPresentation: false,
+        diagramFileName: 'Untitled diagram.json',
         flowPanelOpen: true,
         flowPanelWidth: 390,
-        defaultShape: 'roundedRectangle'
+        diagramTheme: 'technical',
+        diagramPalette: 'blue',
+        defaultShape: 'umlComponent'
       },
       ui: {
         selectedComponentIds: [],
@@ -170,13 +201,11 @@
   function loadInitialState(){
     const empty = defaultState();
     try{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if(!raw) return empty;
-      const parsed = JSON.parse(raw);
-      validateImported(parsed, false);
-      return mergeDefaults(parsed);
+      const result = autosave.load();
+      if(result.error) saveError = result.recovered ? 'Recovery copy loaded. Autosave paused.' : 'Autosave could not be loaded. Original data preserved.';
+      return result.document ? mergeDefaults(result.document) : empty;
     }catch(err){
-      console.warn('Could not load autosave', err);
+      saveError = `Autosave unavailable: ${err.message}`;
       return empty;
     }
   }
@@ -188,7 +217,7 @@
     return {
       components,
       messageFlows,
-      settings: { ...base.settings, ...(parsed.settings || {}), flowPanelOpen: (parsed.settings && Object.prototype.hasOwnProperty.call(parsed.settings, 'flowPanelOpen')) ? parsed.settings.flowPanelOpen : true },
+      settings: { ...base.settings, ...(parsed.settings || {}), diagramTheme:parsed.settings?.diagramTheme || 'custom', flowPanelOpen: (parsed.settings && Object.prototype.hasOwnProperty.call(parsed.settings, 'flowPanelOpen')) ? parsed.settings.flowPanelOpen : true },
       ui: { ...base.ui, ...(parsed.ui || {}), selectedComponentIds: [], selectedFlowId: null }
     };
   }
@@ -241,24 +270,42 @@
   }
 
   function saveLocal(silent=false){
+    if(drag && ['label','move','resize'].includes(drag.type)) return;
+    if(flowEditorOriginalAll) return;
     const copy = snapshot();
     copy.ui.selectedComponentIds = [];
     copy.ui.selectedFlowId = null;
     try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
+      autosave.save(copy);
+      saveError = '';
+      renderSaveStatus();
       if(!silent) showToast('Saved locally');
     }catch(err){
-      showToast('Could not save locally. The diagram may be too large.');
-      console.error(err);
+      saveError = err.message;
+      renderSaveStatus();
+      if(!silent) showToast('Autosave failed. Export JSON to keep a copy.');
     }
   }
 
-  function snapshot(){
-    return JSON.parse(JSON.stringify({ components: state.components, messageFlows: state.messageFlows, settings: state.settings, ui: state.ui }));
+  function renderSaveStatus(){
+    const status = $('saveStatus');
+    status.textContent = saveError ? 'Autosave needs attention' : 'Saved on this device';
+    status.title = saveError || 'Export JSON for a portable backup.';
+    status.classList.toggle('saveError', !!saveError);
+    $('storageNotice').hidden = !saveError;
+    $('storageNoticeText').textContent = saveError;
+    $('recoveryBtn').hidden = autosave.recoveryText() === null;
+    $('retrySaveBtn').textContent = autosave.recoveryText() === null ? 'Retry save' : 'Resume autosave';
   }
 
-  function pushHistory(label='change'){
-    if(suppressHistory) return;
+  function snapshot(){
+    elements.sync(state.components);
+    const settings = state.ui.presentationMode && editorViewport ? {...state.settings,...editorViewport} : state.settings;
+    return JSON.parse(JSON.stringify({ schemaVersion:1, components: state.components, messageFlows: state.messageFlows, settings, ui: state.ui }));
+  }
+
+  function pushHistory(_label='change'){
+    if(suppressHistory || flowEditorOriginalAll) return;
     const snap = snapshot();
     history = history.slice(0, historyIndex + 1);
     history.push(snap);
@@ -268,8 +315,14 @@
   }
 
   function restoreSnapshot(snap){
+    onFlowDragEnd();
+    appearance?.close(true);
+    resetConnectionDraft(false);
+    drag = null;
     suppressHistory = true;
     state = mergeDefaults(JSON.parse(JSON.stringify(snap)));
+    currentFileName = state.settings.diagramFileName;
+    state.settings.activeCanvasMode = 'select';
     stopAnimation(false);
     renderAll();
     saveLocal(true);
@@ -374,23 +427,41 @@
     renderToolbarState();
     renderCanvas();
     renderFlowPanel();
-    renderProperties();
+    renderProperties(); associateLabels(els.propertiesPanel);
     renderImagePanels();
     renderFlowEditorIfOpen();
     updateStatus();
-    updateConnectionChoiceOverlayPosition();
   }
 
   function renderToolbarState(){
+    renderSidebarTabs();
+    document.body.dataset.diagramTheme = state.settings.diagramTheme;
+    $('diagramTheme').value = state.settings.diagramTheme;
+    $('diagramPalette').value = state.settings.diagramPalette;
+    $('diagramPalette').disabled = state.settings.diagramTheme !== 'soft';
+    if(state.ui.presentationMode) library?.close();
+    $('selectionTools').hidden = state.ui.selectedComponentIds.length < 2 || !!placement || !!connectSourceId;
+    $('undoBtn').disabled = historyIndex <= 0;
+    $('redoBtn').disabled = historyIndex >= history.length - 1;
+    $('copyBtn').disabled = !state.ui.selectedComponentIds.length;
+    $('pasteBtn').disabled = !clipboard?.components?.length;
+    $('deleteBtn').disabled = !state.ui.selectedComponentIds.length && !state.ui.selectedFlowId;
+    if(document.activeElement !== $('diagramName')) $('diagramName').value = (state.settings.diagramFileName || 'Untitled diagram').replace(/\.json$/i, '');
     document.body.classList.toggle('presentation', state.ui.presentationMode);
+    document.body.classList.toggle('focusFlow', !state.ui.presentationMode && !animation.running && !!state.ui.selectedFlowId && state.settings.focusSelectedFlow === true);
+    $('focusFlowBtn').setAttribute('aria-pressed', String(state.settings.focusSelectedFlow === true));
+    $('focusFlowBtn').classList.toggle('active', state.settings.focusSelectedFlow === true);
     document.body.classList.toggle('hideInactiveConnections', state.ui.presentationMode && !state.settings.showInactiveConnectionsInPresentation);
     document.body.classList.toggle('panelClosed', state.ui.presentationMode && !state.settings.presentationImagePanelOpen);
     document.body.classList.toggle('flowPanelClosed', !state.ui.presentationMode && !state.settings.flowPanelOpen);
     els.canvasWrap.classList.toggle('plain', state.ui.presentationMode || !state.settings.showGrid);
-    els.selectModeBtn.classList.toggle('active', state.settings.activeCanvasMode === 'select');
+    els.selectModeBtn.classList.toggle('active', state.settings.activeCanvasMode === 'select' && !placement);
     els.panModeBtn.classList.toggle('active', state.settings.activeCanvasMode === 'pan');
     els.gridBtn.classList.toggle('active', state.settings.showGrid);
     els.snapBtn.classList.toggle('active', state.settings.snapToGrid);
+    els.gridBtn.setAttribute('aria-pressed', String(state.settings.showGrid));
+    els.snapBtn.setAttribute('aria-pressed', String(state.settings.snapToGrid));
+    $('connectBtn').classList.toggle('active', state.settings.activeCanvasMode === 'connect');
     els.zoomDisplay.textContent = `${Math.round(state.settings.zoom * 100)}%`;
     const panelWidth = clamp(Number(state.settings.flowPanelWidth) || 390, 280, 620);
     state.settings.flowPanelWidth = panelWidth;
@@ -401,16 +472,35 @@
       presentationBtn.title = presentationLabel;
       presentationBtn.setAttribute('aria-label', presentationLabel);
       const label = presentationBtn.querySelector('.label');
-      if(label) label.textContent = presentationLabel;
+      if(label) label.textContent = state.ui.presentationMode ? 'Exit presentation' : 'Present';
     }
-    els.shapeButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.shape === state.settings.defaultShape));
+    document.querySelectorAll('.shapeTool').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.shape === placement?.shape);
+      btn.setAttribute('aria-pressed', String(btn.dataset.shape === placement?.shape));
+    });
     if(els.connectionStyleSelect) els.connectionStyleSelect.value = selectedFlow()?.connectionStyle || state.settings.defaultConnectionStyle;
     setAnimationModeUi(state.settings.animationMode);
     const isAutoMode = state.settings.animationMode === 'auto';
+    const startButton = $('startBtn');
+    const startLabel = animation.manualWaiting ? 'Play next message' : !animation.running ? 'Start animation' : animation.paused ? 'Resume animation' : 'Pause animation';
+    startButton.innerHTML = icon(animation.running && !animation.paused && !animation.manualWaiting ? 'pause' : 'play');
+    startButton.title = startLabel;
+    startButton.setAttribute('aria-label', startLabel);
+    $('loopAnimation').checked = state.settings.loopAnimation !== false;
+    const groups = animationGroups();
+    const messageIndex = currentMessageIndex();
+    $('prevMessageBtn').disabled = messageIndex <= 0;
+    const readyToPlay = !isAutoMode && ['ready','stopped'].includes(animation.phase);
+    $('nextMessageBtn').disabled = !groups.length || manualMessageBusy() || (!readyToPlay && messageIndex >= groups.length - 1);
+    $('nextMessageBtn').title = manualMessageBusy() ? 'Wait for this message to finish, or resume playback' : readyToPlay ? 'Play this message (Right arrow)' : 'Next message (Right arrow)';
+    $('playbackModeHint').textContent = isAutoMode ? 'Auto continues through the flow.' : animation.phaseInspection ? 'Inspecting individual phases. Next message returns to message playback.' : 'Next plays one message, then waits. Messages marked Together play as a group.';
+    for(const field of ['showTokenMessageInPresentation','showProcessingActionInPresentation']) $(field).checked = state.settings[field];
+    startButton.disabled = !groups.length;
+    $('stopBtn').disabled = !animation.running && animation.index < 0;
     const prevBtn = $('prevBtn');
     const nextBtn = $('nextBtn');
-    if(prevBtn){ prevBtn.disabled = isAutoMode; prevBtn.title = isAutoMode ? 'Previous phase is disabled in auto mode' : 'Previous phase'; }
-    if(nextBtn){ nextBtn.disabled = isAutoMode; nextBtn.title = isAutoMode ? 'Next phase is disabled in auto mode' : 'Next phase'; }
+    if(prevBtn){ prevBtn.disabled = isAutoMode || animation.paused || !animation.running || (animation.phase === 'transfer' && animation.index === 0); prevBtn.title = isAutoMode ? 'Choose Manual to inspect phases' : 'Previous phase'; }
+    if(nextBtn){ nextBtn.disabled = isAutoMode || animation.paused || animation.phase === 'transfer'; nextBtn.title = isAutoMode ? 'Choose Manual to inspect phases' : 'Next phase'; }
     state.settings.animationSpeed = normalizeAnimationSpeed(state.settings.animationSpeed);
     if(els.speedSelect){
       els.speedSelect.value = speedToRangeValue(state.settings.animationSpeed);
@@ -418,7 +508,7 @@
     }
     els.sideTitle.textContent = state.ui.presentationMode ? 'Presentation' : 'Flow Steps';
     const panelOpen = state.ui.presentationMode ? state.settings.presentationImagePanelOpen : state.settings.flowPanelOpen;
-    els.closePanelBtn.textContent = panelOpen ? '▶' : '◀';
+    els.closePanelBtn.innerHTML = icon(panelOpen ? 'next' : 'previous');
     els.closePanelBtn.classList.toggle('expanded', panelOpen);
     els.closePanelBtn.classList.toggle('collapsed', !panelOpen);
     els.closePanelBtn.setAttribute('aria-label', panelOpen ? 'Collapse panel' : 'Expand panel');
@@ -439,53 +529,84 @@
     }
   }
 
+  function renderSidebarTabs(){
+    for(const tab of ['flow', 'properties']){
+      const active = sidebarTab === tab;
+      $(tab + 'Tab').setAttribute('aria-selected', String(active));
+      $(tab + 'Tab').tabIndex = active ? 0 : -1;
+      $(tab + 'Pane').hidden = state.ui.presentationMode || !active;
+    }
+    $('flowCount').textContent = state.messageFlows.length;
+  }
+
+  function setSidebarTab(tab){
+    sidebarTab = tab;
+    renderSidebarTabs();
+  }
+
   function renderCanvas(){
+    elements.sync(state.components);
     els.viewport.setAttribute('transform', `translate(${state.settings.panX},${state.settings.panY}) scale(${state.settings.zoom})`);
     els.gridRect.style.display = (state.settings.showGrid && !state.ui.presentationMode) ? 'block' : 'none';
     els.gridRect.setAttribute('x', -10000);
     els.gridRect.setAttribute('y', -10000);
     els.gridRect.setAttribute('width', 20000);
     els.gridRect.setAttribute('height', 20000);
-    els.emptyHint.style.display = state.components.length ? 'none' : 'block';
+    els.emptyHint.style.display = state.components.length || placement ? 'none' : 'block';
     els.svg.style.cursor = cursorForMode();
 
     els.connectionsLayer.innerHTML = '';
     els.componentsLayer.innerHTML = '';
+    $('annotationsLayer').innerHTML = '';
+    for(const c of state.components){
+      const target = findComponent(c.annotatedElementId);
+      if(c.shape === 'umlComment' && target){
+        const a = elements.boundary(c,center(target)).point, b = elements.boundary(target,center(c)).point;
+        $('annotationsLayer').appendChild(svgEl('path',{class:'annotationLink',d:`M${a.x},${a.y}L${b.x},${b.y}`,fill:'none',stroke:'#94a3b8','stroke-width':1.2,'stroke-dasharray':'5 4'}));
+      }
+    }
+    els.labelsLayer.innerHTML = '';
     els.overlayLayer.innerHTML = '';
 
     const flows = orderedFlows();
     flows.forEach(flow => renderFlow(flow, flows));
-    [...state.components].sort((a,b) => (a.zIndex||0) - (b.zIndex||0)).forEach(renderComponent);
+    [...state.components].sort((a,b) => Number(elements.attached(a.shape))-Number(elements.attached(b.shape)) || (a.zIndex||0) - (b.zIndex||0)).forEach(renderComponent);
+    renderFlowLabels(flows);
     renderAnimationOverlay();
     renderSelectedFlowEndpointHandles();
     renderSelectedFlowBendHandle();
     renderEndpointDragPreview();
     renderConnectionDraftPreview();
+    renderPlacementPreview();
     if(drag?.type === 'selectBox') renderSelectionBox();
   }
 
   function cursorForMode(){
     if(drag?.type === 'pan') return 'grabbing';
+    if(drag?.copyDrag) return 'copy';
+    if(placement) return 'crosshair';
     if(state.settings.activeCanvasMode === 'pan') return 'grab';
     if(state.settings.activeCanvasMode === 'connect') return connectSourceId ? 'crosshair' : 'cell';
     return 'default';
   }
 
   function renderComponent(c){
-    const g = svgEl('g', { class: classNames('componentGroup', c.shape === 'package' && 'packageComponent', isSelectedComponent(c.id) && 'selected', animationSourceIds().has(c.id) && 'activeSource', animationTargetIds().has(c.id) && 'activeTarget', animationProcessingIds().has(c.id) && 'processing'), 'data-id': c.id, tabindex: 0 });
+    const flow = selectedFlow();
+    const endpoint = !state.ui.presentationMode && flow && [flow.sourceComponentId, flow.targetComponentId].includes(c.id);
+    const g = svgEl('g', { class: classNames('componentGroup', c.shape === 'package' && 'packageComponent', isSelectedComponent(c.id) && 'selected', endpoint && 'flowEndpointSelected', animationSourceIds().has(c.id) && 'activeSource', animationTargetIds().has(c.id) && 'activeTarget', animationProcessingIds().has(c.id) && 'processing'), 'data-id': c.id, tabindex: 0, role:'button', 'aria-label':`Component: ${c.name}` });
+    if(isSelectedComponent(c.id) && !state.ui.presentationMode) g.appendChild(svgEl('rect',{class:'componentSelectionOutline',x:c.x-5,y:c.y-5,width:c.width+10,height:c.height+10,rx:4,fill:'none',stroke:'#818cf8','stroke-width':1,'pointer-events':'none'}));
     g.appendChild(componentShapeEl(c));
     g.appendChild(componentTextEl(c));
+    renderComponentFeedback(g,c);
     if(shouldShowPorts(c.id)) renderPorts(g, c);
-    if(isSelectedComponent(c.id) && !state.ui.presentationMode) renderResizeHandles(g, c);
+    if(isSelectedComponent(c.id) && !state.ui.presentationMode && !elements.attached(c.shape)) renderResizeHandles(g, c);
     els.componentsLayer.appendChild(g);
   }
 
-  function packageHeaderHeight(c){
-    return Math.min(48, Math.max(30, Number(c.height || 0) * .18));
-  }
-
   function componentShapeEl(c){
-    const common = { class: classNames('componentShape', c.shape === 'package' && 'packageShape'), fill: c.fillColor || '#ffffff', stroke: c.borderColor || '#334155', 'stroke-width': c.borderWidth || 2 };
+    const common = { class: classNames('componentShape', c.shape === 'package' && 'packageShape'), fill: c.fillColor || '#ffffff', 'fill-opacity':c.fillOpacity ?? (c.shape==='package'?.38:1), stroke: c.borderStyle==='none'?'none':(c.borderColor || '#334155'), 'stroke-width': c.borderWidth ?? 2, 'stroke-opacity':c.borderOpacity ?? 1, 'stroke-dasharray':dashPattern(c.borderStyle,c.borderWidth ?? 2) };
+    const uml = globalThis.MessageFlowUml.render(c,common,svgEl);
+    if(uml) return uml;
     switch(c.shape){
       case 'rectangle': return svgEl('rect', { ...common, x:c.x, y:c.y, width:c.width, height:c.height, rx:3, ry:3 });
       case 'ellipse': return svgEl('ellipse', { ...common, cx:c.x+c.width/2, cy:c.y+c.height/2, rx:c.width/2, ry:c.height/2 });
@@ -503,19 +624,12 @@
       case 'parallelogram':
         return svgEl('polygon', { ...common, points:`${c.x+c.width*.22},${c.y} ${c.x+c.width},${c.y} ${c.x+c.width*.78},${c.y+c.height} ${c.x},${c.y+c.height}` });
       case 'text':
-        return svgEl('rect', { class:'componentShape textItemShape', x:c.x, y:c.y, width:c.width, height:c.height, rx:6, ry:6, fill:'transparent', stroke:'transparent', 'stroke-width':0 });
-      case 'package': {
-        const headerH = packageHeaderHeight(c);
-        const group = svgEl('g', {});
-        group.appendChild(svgEl('rect', { ...common, x:c.x, y:c.y, width:c.width, height:c.height, rx:16, ry:16 }));
-        group.appendChild(svgEl('line', { class:'packageSeparator', x1:c.x, y1:c.y+headerH, x2:c.x+c.width, y2:c.y+headerH }));
-        return group;
-      }
+        return svgEl('rect', { ...common, class:'componentShape textItemShape', x:c.x, y:c.y, width:c.width, height:c.height, rx:6, ry:6, fill:c.fillColor || 'transparent', stroke:c.borderStyle==='none'?'none':(c.borderColor || 'transparent'), 'stroke-width':c.borderWidth ?? 0 });
       case 'queue': {
         const g = svgEl('g', {});
         const offset = Math.min(12, c.width*.08);
         g.appendChild(svgEl('rect', { ...common, x:c.x+offset, y:c.y, width:c.width-offset, height:c.height, rx:14, ry:14 }));
-        g.appendChild(svgEl('path', { d:`M${c.x+offset*.35},${c.y+c.height*.22} L${c.x+offset},${c.y+c.height*.22} M${c.x+offset*.35},${c.y+c.height*.5} L${c.x+offset},${c.y+c.height*.5} M${c.x+offset*.35},${c.y+c.height*.78} L${c.x+offset},${c.y+c.height*.78}`, fill:'none', stroke:common.stroke, 'stroke-width':common['stroke-width'], 'stroke-linecap':'round' }));
+        g.appendChild(svgEl('path', { d:`M${c.x+offset*.35},${c.y+c.height*.22} L${c.x+offset},${c.y+c.height*.22} M${c.x+offset*.35},${c.y+c.height*.5} L${c.x+offset},${c.y+c.height*.5} M${c.x+offset*.35},${c.y+c.height*.78} L${c.x+offset},${c.y+c.height*.78}`, ...common, fill:'none', 'stroke-linecap':'round' }));
         return g;
       }
       case 'note': {
@@ -549,39 +663,93 @@
         const d = `M${cx},${bodyTop} L${cx},${bodyBottom-22} M${c.x+12},${armY} L${c.x+c.width-12},${armY} M${cx},${bodyBottom-22} L${c.x+18},${legY} M${cx},${bodyBottom-22} L${c.x+c.width-18},${legY}`;
         const group = svgEl('g', {});
         group.appendChild(svgEl('rect', { ...common, x:c.x, y:c.y, width:c.width, height:c.height, rx:18, ry:18, opacity:.18 }));
-        group.appendChild(svgEl('circle', { ...common, cx, cy: top+headR, r:headR, fill:'none', 'stroke-width':2.2 }));
-        group.appendChild(svgEl('path', { ...common, d, fill:'none', 'stroke-linecap':'round', 'stroke-width':2.2 }));
+        group.appendChild(svgEl('circle', { ...common, cx, cy: top+headR, r:headR, fill:'none' }));
+        group.appendChild(svgEl('path', { ...common, d, fill:'none', 'stroke-linecap':'round' }));
         return group;
       }
       case 'roundedRectangle':
-      default: return svgEl('rect', { ...common, x:c.x, y:c.y, width:c.width, height:c.height, rx:16, ry:16 });
+      default: return svgEl('rect', { ...common, x:c.x, y:c.y, width:c.width, height:c.height, rx:state.settings.diagramTheme === 'soft' ? 12 : 6, ry:state.settings.diagramTheme === 'soft' ? 12 : 6 });
     }
   }
 
+  function attachmentAt(point,shape){
+    return state.components.filter(c=>elements.canOwn(c,shape)).map(owner=>{
+      const a=elements.boundary(owner,point),inside=point.x>=owner.x && point.x<=owner.x+owner.width && point.y>=owner.y && point.y<=owner.y+owner.height;
+      return {ownerId:owner.id,attachment:{side:a.side,ratio:a.ratio},distance:Math.hypot(point.x-a.point.x,point.y-a.point.y),inside,port:owner.shape==='umlPort'};
+    }).filter(a=>a.inside || a.distance<=32/state.settings.zoom).sort((a,b)=>Number(b.port)-Number(a.port) || a.distance-b.distance).map(({ownerId,attachment})=>({ownerId,attachment}))[0] || null;
+  }
+
+  function remapAttachments(copies,idMap){
+    for(const c of copies){
+      if(idMap.has(c.ownerId)) c.ownerId=idMap.get(c.ownerId);
+      else if(c.ownerId){c.attachment.ratio=Math.min(.95,c.attachment.ratio+.12);}
+      if(idMap.has(c.annotatedElementId)) c.annotatedElementId=idMap.get(c.annotatedElementId);
+      else if(c.annotatedElementId && !findComponent(c.annotatedElementId)) delete c.annotatedElementId;
+    }
+  }
+
+  function applyDiagramTheme(theme,palette){
+    state.settings.diagramTheme=theme;state.settings.diagramPalette=palette;
+    state.components.forEach(resetComponentAppearance);
+    state.messageFlows.forEach(f=>f.style={...f.style,color:theme==='monochrome'?'#525252':'#64748b',textColor:theme==='monochrome'?'#181818':'#202b3c',thickness:1.7,lineStyle:'solid',opacity:1,textOpacity:1});
+    pushHistory('diagram theme');renderAll();showToast('Diagram style applied');
+  }
+
+  function elementProperties(c){
+    if(elements.attached(c.shape)) return `<p class="propertyHint">Attached to its owner. Drag along the boundary to reposition.</p><div class="formRow"><label>Owner</label><select id="propOwner">${state.components.filter(o=>elements.canOwn(o,c.shape)&&o.id!==c.id).map(o=>`<option value="${escapeHtml(o.id)}" ${o.id===c.ownerId?'selected':''}>${escapeHtml(o.name)}</option>`).join('')}</select></div><div class="formRow"><label>Side</label><select id="propAttachmentSide">${['top','right','bottom','left'].map(side=>`<option ${c.attachment.side===side?'selected':''}>${side}</option>`).join('')}</select></div><div class="formRow"><label>Position (%)</label><input id="propAttachmentRatio" type="number" min="0" max="100" value="${Math.round(c.attachment.ratio*100)}"></div>`;
+    const annotation=c.shape==='umlComment' ? `<div class="formRow"><label>Annotates</label><select id="propAnnotation"><option value="">No link</option>${state.components.filter(o=>o.id!==c.id).map(o=>`<option value="${escapeHtml(o.id)}" ${c.annotatedElementId===o.id?'selected':''}>${escapeHtml(o.name)}</option>`).join('')}</select></div>` : '';
+    const kind=c.shape==='umlNode' ? `<div class="formRow"><label>Node kind</label><select id="propNodeKind">${[['node','Node'],['device','Device'],['executionEnvironment','Execution environment']].map(([id,label])=>`<option value="${id}" ${(c.nodeKind||'node')===id?'selected':''}>${label}</option>`).join('')}</select></div>` : '';
+    return kind+`<div class="formRow"><label>Stereotype (optional)</label><input id="propStereotype" value="${escapeHtml(c.stereotype||'')}" placeholder="e.g. service"></div><div class="formRow"><label>Details (optional)</label><textarea id="propDetails" rows="3" placeholder="A short description">${escapeHtml(c.details||'')}</textarea></div>`+annotation;
+  }
+
+  function textPlacement(c,padding=16){
+    const align=c.textAlign || 'center';
+    return {anchor:align==='left'?'start':align==='right'?'end':'middle',x:align==='left'?c.x+padding:align==='right'?c.x+c.width-padding:c.x+c.width/2};
+  }
+
+  function elementText(c){
+    const g=svgEl('g',{}),color=c.textColor||'#202b3c',size=c.fontSize ?? 14,weight=c.fontWeight ?? 600;
+    function text(value,x,y,font=size,anchor='middle',bold=weight){
+      const t=svgEl('text',{class:'elementText',x,y,fill:color,'fill-opacity':c.textOpacity ?? 1,'text-anchor':anchor,'dominant-baseline':'middle'});
+      t.style.fontSize=font+'px';t.style.fontWeight=bold;t.textContent=value;g.appendChild(t);
+    }
+    if(elements.attached(c.shape)){
+      const side=c.attachment?.side || 'right',cx=c.x+c.width/2,cy=c.y+c.height/2;
+      const x=c.shape==='umlPort' ? cx+(side==='left'?-14:side==='right'?14:0):cx;
+      const y=c.shape==='umlPort' && ['left','right'].includes(side)?cy-15:cy+(side==='top'?-25:29);
+      text(c.name,x,y,c.fontSize ?? 12,c.textAlign?textPlacement(c).anchor:c.shape==='umlPort'&&side==='left'?'end':c.shape==='umlPort'&&side==='right'?'start':'middle',c.fontWeight ?? 500);return g;
+    }
+    if(c.shape==='package'){
+      const width=Math.min(c.width-20,Math.max(100,c.width*.48)),font=c.fontSize ?? 13,align=c.textAlign || 'left';
+      text(wrapMeasured(c.name,width-20,font,1)[0],c.x+(align==='left'?12:align==='right'?width-12:width/2),c.y+14,font,align==='left'?'start':align==='right'?'end':'middle');return g;
+    }
+    const kind=c.shape==='umlNode' && c.nodeKind && c.nodeKind!=='node' ? c.nodeKind : '';
+    const type=kind || c.stereotype || (c.shape==='umlComponent'?'component':c.shape==='umlArtifact'?'artifact':'');
+    const top=c.y+(c.shape==='umlNode'?24:12),width=Math.max(40,c.width-(['umlComponent','umlArtifact'].includes(c.shape)?76:40));
+    const pos=textPlacement(c,20);if(['umlComponent','umlArtifact'].includes(c.shape)&&c.textAlign==='right')pos.x-=36;
+    if(c.shape==='umlNode' && (!c.textAlign||c.textAlign==='center'))pos.x-=8;
+    let y=type?top+11:top+size/2+4;
+    if(type){text('«'+wrapMeasured(type,width,11,1)[0]+'»',pos.x,y,11,pos.anchor,500);y+=size/2+16;}
+    if(kind&&c.stereotype){text('«'+wrapMeasured(c.stereotype,width,11,1)[0]+'»',pos.x,y,11,pos.anchor,500);y+=18;}
+    const lineHeight=size+4,lines=wrapMeasured(c.name,width,size,Math.max(1,Math.min(2,Math.floor((c.y+c.height-y-8)/lineHeight))));
+    for(const line of lines){text(line,pos.x,y,size,pos.anchor);y+=lineHeight;}
+    if(c.details){y+=6;for(const line of wrapMeasured(c.details,c.width-40,12,Math.max(0,Math.floor((c.y+c.height-y-8)/16)))){text(line,pos.x,y,12,pos.anchor,400);y+=16;}}
+    return g;
+  }
+
   function componentTextEl(c){
-    const isPackage = c.shape === 'package';
-    const isTextItem = c.shape === 'text';
-    const headerH = isPackage ? packageHeaderHeight(c) : c.height;
-    const maxLines = isPackage ? 2 : (isTextItem ? 6 : 4);
-    const lineHeight = isPackage ? 14 : (isTextItem ? 20 : 16);
-    const y = isPackage ? c.y + headerH/2 : c.y + c.height/2;
-    const text = svgEl('text', {
-      class: classNames('componentText', isPackage && 'packageText', isTextItem && 'textItemText'),
-      x:c.x+c.width/2,
-      y,
-      fill:c.textColor || '#0f172a',
-      'data-id': c.id
-    });
-    const lines = String(c.name || '').split('\n').slice(0,maxLines);
-    lines.forEach((line, i) => {
-      const tspan = svgEl('tspan', { x:c.x+c.width/2, dy: i === 0 ? -(lines.length-1)*lineHeight/2 : lineHeight });
-      tspan.textContent = line || ' ';
-      text.appendChild(tspan);
-    });
+    if(c.shape.startsWith('uml') || elements.attached(c.shape) || c.shape === 'package' || c.stereotype || c.details) return elementText(c);
+    const size=c.fontSize ?? (c.shape === 'text'?18:14),lineHeight=size+4,pos=textPlacement(c);
+    const maxLines=Math.max(1,Math.floor((c.height-24)/lineHeight));
+    const text=svgEl('text',{class:classNames('componentText',c.shape==='text'&&'textItemText'),x:pos.x,y:c.y+c.height/2,fill:c.textColor||'#0f172a','fill-opacity':c.textOpacity ?? 1,'data-id':c.id});
+    text.style.fontSize=size+'px';text.style.fontWeight=c.fontWeight ?? 600;text.style.textAnchor=pos.anchor;
+    const lines=wrapMeasured(c.name||'',Math.max(24,c.width-32),size,maxLines);
+    lines.forEach((line,i)=>{const span=svgEl('tspan',{x:pos.x,dy:i===0?-(lines.length-1)*lineHeight/2:lineHeight});span.textContent=line||' ';text.appendChild(span);});
     return text;
   }
 
   function shouldShowPorts(componentId){
+    if(['package','text','note','umlComment'].includes(findComponent(componentId)?.shape)) return false;
     if(state.ui.presentationMode) return false;
     if(drag?.type === 'endpoint') return true;
     // While creating a connection from a selected source port, keep all ports visible
@@ -602,7 +770,8 @@
         cx:p.x, cy:p.y, r:4.5,
         'data-id':c.id,
         'data-port':portId,
-        'aria-label':`Connection port ${portLabel(portId, c)}`
+        tabindex:0, role:'button',
+        'aria-label':`Connect ${c.name}: ${portLabel(portId, c)}`
       }));
     }
   }
@@ -617,6 +786,7 @@
   }
 
   function portDefsForComponent(c){
+    if(elements.attached(c.shape)) return [[makePortId(c.attachment?.side || 'right',0.5),'Connection']];
     const defs = [];
     for(const [side, sideLabel, dimension] of PORT_SIDES){
       const length = dimension === 'width' ? c.width : c.height;
@@ -724,43 +894,93 @@
     if(!source || !target) return;
     const active = activeFlowIds().has(flow.id);
     const selected = state.ui.selectedFlowId === flow.id;
-    const hiddenInDrawingMode = !!flow.hiddenInDrawingMode && !state.ui.presentationMode && !animation.running && !active;
+    const hiddenInDrawingMode = !!flow.hiddenInDrawingMode && !state.ui.presentationMode && !animation.running;
     if(hiddenInDrawingMode) return;
     const pathData = connectionPath(flow, allFlows);
+    const color=active?'#f59e0b':(flow.style?.color || '#475569'),opacity=flow.style?.lineStyle==='none'?0:(flow.style?.opacity ?? 1);
+    const markerId='flow-arrow-'+allFlows.indexOf(flow),marker=svgEl('marker',{id:markerId,viewBox:'0 0 10 10',refX:10,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'});
+    marker.appendChild(svgEl('path',{d:'M0,0 L10,5 L0,10 z',fill:color,'fill-opacity':opacity}));els.connectionsLayer.appendChild(marker);
+    if(selected && !state.ui.presentationMode && !animation.running && opacity>0)els.connectionsLayer.appendChild(svgEl('path',{class:'flowSelectionOutline',d:pathData.d,fill:'none',stroke:'#818cf8','stroke-width':Number(flow.style?.thickness ?? 1.7)+5,'stroke-opacity':.2,'pointer-events':'none','vector-effect':'non-scaling-stroke'}));
     const completed = animation.completed.has(flow.id);
     const path = svgEl('path', {
       id: `path-${flow.id}`,
       class: classNames('flowPath', selected && 'selected', active && 'active', completed && 'completed'),
       d: pathData.d,
+      'stroke-dasharray':dashPattern(flow.style?.lineStyle,flow.style?.thickness ?? 1.7),
+      'stroke-opacity':flow.style?.lineStyle==='none'?0:(flow.style?.opacity ?? 1),
       stroke: active ? '#f59e0b' : (selected ? '#2563eb' : (flow.style?.color || '#475569')),
       'stroke-width': active ? 4.2 : (flow.style?.thickness || 2.2),
-      'marker-end': active ? 'url(#arrowActive)' : selected ? 'url(#arrowSelected)' : 'url(#arrow)',
+      'marker-end':`url(#${markerId})`,
       'data-id': flow.id
     });
+    path.style.stroke = color;
+    path.style.strokeWidth = active ? '2.8' : String(flow.style?.thickness || 1.7);
     els.connectionsLayer.appendChild(path);
-    if(active && animation.running){
-      els.connectionsLayer.appendChild(svgEl('path', {
-        class: 'activeConnectionOverlay activeConnectionPersistent',
-        d: pathData.d,
-        'marker-end': 'url(#arrowActive)'
-      }));
-    }
 
-    const showEditLabels = !state.ui.presentationMode && !animation.running;
-    if(showEditLabels){
-      const seq = svgEl('text', { class:'seqLabel', x:pathData.labelX - 18, y:pathData.labelY - 14 });
-      seq.textContent = `#${flow.sequenceNumber || ''}`;
-      els.connectionsLayer.appendChild(seq);
-      const label = svgEl('text', { class:'flowLabel editLabel', x:pathData.labelX, y:pathData.labelY, 'data-id':flow.id });
-      label.textContent = flow.messageText || 'Message';
-      els.connectionsLayer.appendChild(label);
+  }
+
+  function wrapMeasured(value, width, fontSize, maxLines=2){
+    if(maxLines <= 0) return [];
+    textMeasure.font = `600 ${fontSize}px Segoe UI, Arial, sans-serif`;
+    const lines = [];
+    for(const paragraph of String(value).split('\n')){
+      let line = '';
+      for(const word of paragraph.split(/\s+/)){
+        const combined = line ? `${line} ${word}` : word;
+        if(textMeasure.measureText(combined).width <= width){ line = combined; continue; }
+        if(line) lines.push(line);
+        line = '';
+        for(const char of word){
+          if(textMeasure.measureText(line+char).width > width && line){ lines.push(line); line = ''; }
+          line += char;
+        }
+      }
+      lines.push(line || ' ');
+    }
+    const shown = lines.slice(0,maxLines);
+    if(lines.length > maxLines){
+      let last = shown.at(-1).trimEnd();
+      while(last && textMeasure.measureText(last+'…').width > width) last = last.slice(0,-1);
+      shown[shown.length-1] = last+'…';
+    }
+    return shown;
+  }
+
+  function renderFlowLabels(flows){
+    labelPlacements = new Map();
+    if(state.ui.presentationMode || animation.running) return;
+    const fontSize = Math.max(15, Math.min(22, 13/state.settings.zoom));
+    const items = flows.filter(flow => !flow.hiddenInDrawingMode).map(flow => {
+      const path = connectionPath(flow, flows);
+      const lines = wrapMeasured(flow.messageText || 'Message', 200, fontSize, 2);
+      const width = Math.max(90, ...lines.map(line => textMeasure.measureText(line).width + 48));
+      return {id:flow.id, anchor:{x:path.labelX,y:path.labelY}, width, height:lines.length*(fontSize+4)+16, offset:validControlPoint(flow.labelOffset), lines, fontSize};
+    });
+    labelPlacements = globalThis.MessageFlowLabels.layoutLabels(items, state.components.filter(c => c.shape !== 'package'));
+    for(const item of items){
+      const flow = findFlow(item.id), box = labelPlacements.get(item.id);
+      const selected = state.ui.selectedFlowId === flow.id;
+      const g = svgEl('g', {class:classNames('flowLabelGroup',selected && 'selected'), 'data-id':flow.id, tabindex:0, role:'button', 'aria-label':`Message label: ${flow.messageText}. Drag to position; Enter to rename.`});
+      g.style.fontSize = `${fontSize}px`;
+      const title = svgEl('title',{}); title.textContent = flow.messageText || 'Message'; g.appendChild(title);
+      g.appendChild(svgEl('rect',{class:'flowLabelBackground',x:box.x,y:box.y,width:box.width,height:box.height,rx:7}));
+      const sequence = svgEl('text',{class:'labelSequence',x:box.x+14,y:box.y+box.height/2,'dominant-baseline':'middle','text-anchor':'middle','font-size':11});
+      sequence.textContent = flow.sequenceNumber;
+      g.appendChild(sequence);
+      const text = svgEl('text',{class:'flowLabel editLabel',x:box.x+32,y:box.y+box.height/2,'font-size':fontSize,fill:flow.style?.textColor || '#1e293b','fill-opacity':flow.style?.textOpacity ?? 1,'data-id':flow.id});
+      text.style.fill = flow.style?.textColor || '#1e293b';
+      item.lines.forEach((line,index) => {
+        const span = svgEl('tspan',{x:box.x+32,dy:index === 0 ? -(item.lines.length-1)*(fontSize+4)/2 : fontSize+4});
+        span.textContent = line; text.appendChild(span);
+      });
+      g.appendChild(text); els.labelsLayer.appendChild(g);
     }
   }
 
   function renderSelectedFlowEndpointHandles(){
     if(state.ui.presentationMode || animation.running || drag?.type === 'endpoint') return;
     const flow = selectedFlow();
-    if(!flow) return;
+    if(!flow || flow.hiddenInDrawingMode) return;
     const source = findComponent(flow.sourceComponentId);
     const target = findComponent(flow.targetComponentId);
     if(!source || !target) return;
@@ -790,7 +1010,7 @@
   function renderSelectedFlowBendHandle(){
     if(state.ui.presentationMode || animation.running || drag?.type === 'endpoint' || drag?.type === 'bend') return;
     const flow = selectedFlow();
-    if(!flow) return;
+    if(!flow || flow.hiddenInDrawingMode) return;
     const style = flow.connectionStyle || 'arc';
     if(style !== 'arc' && style !== 'angular') return;
     const pathData = connectionPath(flow, orderedFlows());
@@ -861,6 +1081,85 @@
     return `M${sp.x},${sp.y} Q${cx},${cy} ${tp.x},${tp.y}`;
   }
 
+  function renderComponentFeedback(group,component){
+    const source = animation.running && animation.phase === 'transfer' && animationSourceIds().has(component.id);
+    const target = activeAnimatedFlows().some(flow => flow.targetComponentId === component.id);
+    const arrival = target && feedback.kind === 'arrived' && feedback.elapsed < feedback.duration;
+    if(!reducedMotion.matches && (arrival || (source && animation.transferProgress < .16))){
+      const t = arrival ? feedback.elapsed / feedback.duration : animation.transferProgress / .16;
+      const inset = arrival ? 3 + t * 9 : 4;
+      group.appendChild(svgEl('rect',{
+        class:arrival?'arrivalPulse':'departureCue',x:component.x-inset,y:component.y-inset,
+        width:component.width+inset*2,height:component.height+inset*2,rx:7,
+        fill:'none',stroke:'#d98b16','stroke-width':1.5,opacity:(1-t)*.75,'pointer-events':'none'
+      }));
+    }
+    if(animationProcessingIds().has(component.id)){
+      const width = Math.min(48,component.width-12),x=component.x+(component.width-width)/2,y=component.y+component.height+5;
+      group.appendChild(svgEl('rect',{class:'processingIndicator',x,y,width,height:3,rx:1.5,fill:'#f2e5cb','pointer-events':'none'}));
+      group.appendChild(svgEl('rect',{class:'processingProgress',x,y,width:width*(reducedMotion.matches ? .5 : Math.max(.06,feedback.elapsed/900)),height:3,rx:1.5,fill:'#c98718','pointer-events':'none'}));
+    }
+  }
+
+  function resetFeedback(){
+    if(feedback.frame) cancelAnimationFrame(feedback.frame);
+    Object.assign(feedback,{kind:null,frame:null,elapsed:0,duration:0});
+  }
+
+  function startPhaseFeedback(kind,duration){
+    resetFeedback();
+    Object.assign(feedback,{kind,duration});
+    runPhaseFeedback();
+  }
+
+  function runPhaseFeedback(){
+    if(!feedback.kind || feedback.elapsed >= feedback.duration || animation.paused) return;
+    if(feedback.frame) cancelAnimationFrame(feedback.frame);
+    feedback.started = performance.now()-feedback.elapsed;
+    const tick = now => {
+      feedback.frame = null;
+      if(animation.paused) return;
+      feedback.elapsed = Math.min(feedback.duration,now-feedback.started);
+      renderCanvas(); renderPlaybackProgress();
+      if(feedback.elapsed < feedback.duration) feedback.frame = requestAnimationFrame(tick);
+    };
+    feedback.frame = requestAnimationFrame(tick);
+  }
+
+  function renderPlaybackProgress(){
+    const active = activeFlowIds();
+    const phase = animation.phase;
+    const status = animation.manualWaiting ? 'Completed' : ({transfer:'Sending',arrived:'Received',processing:'Processing'})[phase];
+    const progress = phase === 'transfer' ? (reducedMotion.matches ? .08 : animation.transferProgress*.75)
+      : phase === 'processing' ? .8 + (reducedMotion.matches ? 0 : Math.min(1,feedback.elapsed/900)*.2)
+      : phase === 'arrived' ? (processingPhaseEnabled() ? .8 : 1) : 0;
+    const update = (node,ids) => {
+      const done = ids.every(id => animation.completed.has(id));
+      const playing = animation.running && ids.some(id => active.has(id));
+      const label = done ? 'Completed' : playing ? (animation.paused ? 'Paused · ' : '') + status : '';
+      node.dataset.playbackState = done ? 'completed' : playing ? phase : 'idle';
+      node.style.setProperty('--step-progress',done ? 1 : playing ? progress : 0);
+      const mark = node.querySelector('.stepCompletion');
+      mark.hidden = !done;
+      const meter = node.querySelector('.stepProgress');
+      meter.setAttribute('aria-label',label || 'Not played');
+      meter.setAttribute('aria-valuenow',Math.round((done ? 1 : playing ? progress : 0)*100));
+      const caption = node.querySelector('.flowTiming');
+      if(caption && label) caption.textContent = label;
+    };
+    els.flowList.querySelectorAll('.flowItem').forEach(node => update(node,[node.dataset.flowId]));
+    const groups = animationGroups();
+    $('presentationTimeline').querySelectorAll('.timelineMessage').forEach(node => update(node,groups[Number(node.dataset.presentationGroup)].flows.map(f=>f.id)));
+  }
+
+  function stepProgressHtml(){
+    return '<span class="stepProgress" role="progressbar" aria-label="Not played" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></span>';
+  }
+
+  function stepCompletionHtml(){
+    return `<span class="stepCompletion" title="Completed" aria-label="Completed" hidden>${icon('check')}</span>`;
+  }
+
   function renderAnimationOverlay(){
     const flows = activeAnimatedFlows();
     if(!animation.running || !flows.length) return;
@@ -878,37 +1177,69 @@
       els.overlayLayer.appendChild(svgEl('path', {
         class:'activeConnectionOverlay activeConnectionPersistent',
         d:activeConnectionD,
+        'stroke-opacity':animation.phase === 'transfer' ? .3 : .8,
         'marker-end':'url(#arrowActive)'
       }));
+
+      if(animation.phase === 'transfer' && !reducedMotion.matches){
+        const progress = motion.travelProgress(animation.transferProgress);
+        const tail = Math.min(.22,progress);
+        els.overlayLayer.appendChild(svgEl('path',{
+          class:'messageTrace',d:activeConnectionD,pathLength:1,
+          'stroke-dasharray':`${tail} ${1-tail}`,'stroke-dashoffset':-(progress-tail)
+        }));
+      }
 
       if(animation.phase === 'transfer' || animation.phase === 'arrived'){
         const point = animation.token?.[flow.id] || cachedPath?.targetPoint || activePathData.targetPoint;
         const g = svgEl('g', { class:'messageToken' });
-        g.appendChild(svgEl('circle', { cx:point.x, cy:point.y, r:10, fill:'#f59e0b', stroke:'#fff', 'stroke-width':3 }));
-        const labelBg = svgEl('rect', { x:point.x-80, y:point.y+16, width:160, height:24, rx:12, fill:'#ffffff', stroke:'#f59e0b', 'stroke-width':1.2 });
+        g.appendChild(svgEl('circle', { cx:point.x, cy:point.y, r:6, fill:'#d98b16', stroke:'#fff', 'stroke-width':2 }));
+        if(!state.ui.presentationMode || state.settings.showTokenMessageInPresentation){
+        const tokenLines = wrapMeasured(flow.messageText || 'Message', 190, 13, 2);
+        const tokenWidth = Math.max(90,...tokenLines.map(line => textMeasure.measureText(line).width+24));
+        const labelBg = svgEl('rect', { x:point.x-tokenWidth/2, y:point.y+16, width:tokenWidth, height:12+tokenLines.length*17, rx:6, fill:'#ffffff', stroke:'#e5c68e', 'stroke-width':1 });
         g.appendChild(labelBg);
-        const text = svgEl('text', { x:point.x, y:point.y+32, 'text-anchor':'middle', 'font-size':12, 'font-weight':800, fill:'#92400e' });
-        text.textContent = flow.messageText || 'Message';
+        const text = svgEl('text', { x:point.x, y:point.y+32, 'text-anchor':'middle', 'font-size':12, 'font-weight':600, fill:'#92400e' });
+        tokenLines.forEach((line,index) => { const span = svgEl('tspan',{x:point.x,dy:index ? 17 : 0}); span.textContent=line; text.appendChild(span); });
         g.appendChild(text);
+        }
         els.overlayLayer.appendChild(g);
       }
 
-      if(animation.phase === 'processing'){
-        els.overlayLayer.appendChild(processingBubble(target, flow.actionText || 'Processing…'));
-      }
     });
+    if(animation.phase === 'processing' && processingPhaseEnabled()) renderProcessingCallouts(flows);
   }
 
-  function processingBubble(target, textValue){
-    const width = Math.max(190, Math.min(320, target.width + 80));
-    const lines = wrapText(textValue, 32).slice(0,5);
-    const height = 24 + lines.length * 17;
-    const x = target.x + target.width/2 - width/2;
-    const y = target.y - height - 16;
-    const g = svgEl('g', {});
+  function renderProcessingCallouts(flows){
+    const items = flows.map(flow => {
+      const target = findComponent(flow.targetComponentId);
+      const width = Math.max(180, Math.min(280,target.width+60));
+      const heading = flows.filter(f=>f.targetComponentId===target.id).length>1 ? wrapMeasured(flow.messageText || 'Message',width-24,11,1)[0] : '';
+      const lines = wrapMeasured(flow.actionText || 'Processing…',width-24,12,4);
+      return {id:flow.id,target,width,height:24+lines.length*17+(heading?18:0),heading,lines,text:flow.actionText || 'Processing…'};
+    });
+    const rect = els.svg.getBoundingClientRect(), z = state.settings.zoom;
+    const top = state.ui.presentationMode ? $('presentationSummary').getBoundingClientRect().bottom-rect.top+16 : 12;
+    const viewport = {x:(12-state.settings.panX)/z,y:(top-state.settings.panY)/z,width:(rect.width-24)/z,height:Math.max(0,rect.height-top-90)/z};
+    const boxes = globalThis.MessageFlowLabels.layoutCallouts(items,state.components,viewport);
+    for(const item of items) els.overlayLayer.appendChild(processingBubble(item,boxes.get(item.id)));
+  }
+
+  function processingBubble(item, box){
+    const {x,y,width,height} = box;
+    const {target,heading,lines} = item;
+    const g = svgEl('g', {class:'processingCallout','data-flow-id':item.id});
+    const title = svgEl('title',{}); title.textContent = item.text; g.appendChild(title);
+    const cx=target.x+target.width/2,cy=target.y+target.height/2;
+    const end={x:clamp(cx,x,x+width),y:clamp(cy,y,y+height)};
+    const start={x:clamp(end.x,target.x,target.x+target.width),y:clamp(end.y,target.y,target.y+target.height)};
+    g.appendChild(svgEl('path',{class:'actionLeader',d:`M${start.x},${start.y} L${end.x},${end.y}`}));
     g.appendChild(svgEl('rect', { class:'actionBubble', x, y, width, height, rx:14 }));
+    if(heading){
+      const text = svgEl('text',{class:'actionText actionHeading',x:x+width/2,y:y+22});text.textContent=heading;g.appendChild(text);
+    }
     lines.forEach((line, i) => {
-      const t = svgEl('text', { class:'actionText', x:x+width/2, y:y+24+i*17 });
+      const t = svgEl('text', { class:'actionText', x:x+width/2, y:y+24+i*17+(heading?18:0) });
       t.textContent = line;
       g.appendChild(t);
     });
@@ -941,7 +1272,6 @@
       return { d, labelX:sx+outward*r*.85, labelY:sy-r*.35, sourcePoint:{x:sx,y:sy}, targetPoint:{x:tx,y:ty} };
     }
 
-    const sc = center(s), tc = center(t);
     const sp = flow.sourcePortId ? portPosition(s, flow.sourcePortId) : portPosition(s, bestPortToward(s, t));
     const tp = flow.targetPortId ? portPosition(t, flow.targetPortId) : portPosition(t, bestPortToward(t, s));
     const mid = { x:(sp.x + tp.x)/2, y:(sp.y + tp.y)/2 };
@@ -1022,33 +1352,10 @@
 
   function center(c){ return { x:c.x+c.width/2, y:c.y+c.height/2 }; }
 
-  function isPackageComponent(c){
-    return !!c && c.shape === 'package';
-  }
-
-  function componentInsidePackage(pkg, candidate){
-    if(!isPackageComponent(pkg) || !candidate || candidate.id === pkg.id) return false;
-    const p = center(candidate);
-    return p.x >= pkg.x && p.x <= pkg.x + pkg.width && p.y >= pkg.y && p.y <= pkg.y + pkg.height;
-  }
-
   function expandMoveOriginalsForPackages(originals){
-    const originalMap = new Map((originals || []).map(o => [o.id, o]));
-    let changed = true;
-    while(changed){
-      changed = false;
-      for(const original of Array.from(originalMap.values())){
-        const pkg = findComponent(original.id);
-        if(!isPackageComponent(pkg)) continue;
-        state.components.forEach(candidate => {
-          if(!originalMap.has(candidate.id) && componentInsidePackage(pkg, candidate)){
-            originalMap.set(candidate.id, JSON.parse(JSON.stringify(candidate)));
-            changed = true;
-          }
-        });
-      }
-    }
-    return Array.from(originalMap.values());
+    const originalMap=new Map((originals || []).map(o=>[o.id,o]));
+    const ids=elements.descendants([...originalMap.keys()],state.components,true);
+    return state.components.filter(c=>ids.has(c.id)).map(c=>originalMap.get(c.id) || JSON.parse(JSON.stringify(c)));
   }
 
   function flowControlOriginalsForComponentMove(componentOriginals){
@@ -1059,149 +1366,123 @@
       .map(flow => ({ id: flow.id, controlPoint: { x: flow.controlPoint.x, y: flow.controlPoint.y } }));
   }
 
-  function anchorPoint(c, tx, ty){
-    const cx = c.x+c.width/2, cy = c.y+c.height/2;
-    const dx = tx-cx, dy = ty-cy;
-    if(Math.abs(dx) < .001 && Math.abs(dy) < .001) return {x:cx,y:cy};
-    if(c.shape === 'ellipse'){
-      const a = c.width/2, b = c.height/2;
-      const scale = 1 / Math.sqrt((dx*dx)/(a*a) + (dy*dy)/(b*b));
-      return { x:cx+dx*scale, y:cy+dy*scale };
-    }
-    const scale = Math.min(Math.abs((c.width/2)/dx) || Infinity, Math.abs((c.height/2)/dy) || Infinity);
-    return { x:cx+dx*scale, y:cy+dy*scale };
-  }
-
-  function renderFlowPanel(){
+  function renderFlowPanel(force=false){
+    if(flowReorder?.active()) return;
     const editing = document.activeElement && els.flowList.contains(document.activeElement) && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
-    if(editing) return;
+    if(editing && !force) return;
+    const focusedFlowId = document.activeElement?.closest('.flowItem')?.dataset.flowId;
+    const focusedAction = document.activeElement?.dataset.action;
+    const focusedField = document.activeElement?.dataset.edit;
     const flows = orderedFlows();
     if(!flows.length){
-      els.flowList.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px">No message flows yet. Use 🔗 Connect, then click source and target components.</div>';
+      els.flowList.innerHTML = '<div class="flowEmpty">Connect your components to build a flow. Select a component, then drag a connection handle to its destination.</div>';
       return;
     }
-    els.flowList.innerHTML = flows.map(flow => flowItemHtml(flow)).join('');
+    els.flowList.innerHTML = animationGroups().map(group => group.flows.length > 1
+      ? `<div class="parallelGroup" role="group" aria-label="${group.flows.length} simultaneous messages"><div class="parallelLabel">Together · ${group.flows.length} messages</div>${group.flows.map(flowItemHtml).join('')}</div>`
+      : flowItemHtml(group.flows[0])).join('');
+    associateLabels(els.flowList);
+    if(focusedFlowId && focusedAction){
+      const item = Array.from(els.flowList.querySelectorAll('.flowItem')).find(row => row.dataset.flowId === focusedFlowId);
+      Array.from(item?.querySelectorAll('button') || []).find(button => button.dataset.action === focusedAction)?.focus({preventScroll:true});
+    }
+    if(focusedFlowId && focusedField){
+      const item = Array.from(els.flowList.querySelectorAll('.flowItem')).find(row => row.dataset.flowId === focusedFlowId);
+      Array.from(item?.querySelectorAll('[data-edit]') || []).find(input => input.dataset.edit === focusedField)?.focus({preventScroll:true});
+    }
   }
 
   function flowItemHtml(flow){
-    const selected = state.ui.selectedFlowId === flow.id;
-    const active = activeFlowIds().has(flow.id);
-    const msg = flow.messageText || 'Message';
-    const route = `${componentName(flow.sourceComponentId)} → ${componentName(flow.targetComponentId)}`;
-    const timing = flow.timing === 'withPrevious' ? 'with previous' : 'after previous';
-    const hidden = !!flow.hiddenInDrawingMode;
-    const eyeTitle = hidden ? 'Show connector in drawing mode' : 'Hide connector in drawing mode';
-    return `<div class="flowItem ${selected ? 'selected' : ''} ${active ? 'activeAnim' : ''} ${hidden ? 'hiddenConnector' : ''}" data-flow-id="${flow.id}">
-      <div class="flowSummary" data-action="edit-flow" title="Click to edit this flow step">
-        <button class="flowDragHandle" data-action="drag-flow" draggable="true" type="button" title="Drag to reorder step" aria-label="Drag to reorder step">⋮⋮</button>
-        <span class="seqBadge">${escapeHtml(flow.sequenceNumber || '')}</span>
-        <div class="flowTitle"><b>${escapeHtml(msg)}</b><span>${escapeHtml(route)}</span></div>
-        <div class="indicators" title="${flow.actionText ? 'Processing action exists' : 'No processing action'}${flow.processingImageDataUrl ? ' / image attached' : ' / no image'}">
-          <span class="timingBadge ${flow.timing === 'withPrevious' ? 'withPrevious' : ''}">${escapeHtml(timing)}</span><span>${flow.actionText ? '⚙' : '○'}</span><span>${flow.processingImageDataUrl ? '🖼' : ''}</span><button class="miniButton eyeButton ${hidden ? 'eyeOff active' : ''}" data-action="toggle-connector-visibility" type="button" title="${eyeTitle}" aria-label="${eyeTitle}" aria-pressed="${hidden ? 'true' : 'false'}">👁</button><button class="miniButton" data-action="edit-flow" type="button">Edit</button>
-        </div>
-      </div>
-    </div>`;
+    const selected=state.ui.selectedFlowId===flow.id,active=activeFlowIds().has(flow.id),expanded=state.ui.expandedFlowId===flow.id;
+    const route=`${componentName(flow.sourceComponentId)} → ${componentName(flow.targetComponentId)}`,n=escapeHtml(flow.sequenceNumber),hidden=!!flow.hiddenInDrawingMode;
+    return `<div class="flowItem ${selected?'selected':''} ${active?'activeAnim':''} ${hidden?'hiddenConnector':''}" data-flow-id="${flow.id}" data-timing="${flow.timing || 'afterPrevious'}">
+      <div class="flowSummary" data-action="select-flow"><button class="flowDragHandle" data-action="drag-flow" type="button" title="Drag to reorder; Alt + ↑ / ↓ to move" aria-label="Reorder step ${n}">${icon('grip')}</button><span class="seqBadge">${n}</span><div class="flowTitle"><span class="flowName">${escapeHtml(flow.messageText||'Message')}</span><span class="flowRoute" title="${escapeHtml(route)}">${escapeHtml(route)}</span></div><button class="expandStep" data-action="toggle-details" aria-label="Details for step ${n}" aria-expanded="${expanded}" aria-controls="details-${flow.id}" title="Step overview">${icon(expanded?'up':'down')}</button></div>
+      <div class="flowCardFooter"><span class="flowTimingWrap">${stepCompletionHtml()}<span class="flowTiming">${flow.sequenceNumber===1?'First message':flow.timing==='withPrevious'?'Together with previous':'After previous'}${hidden?' · Connection hidden':''}</span></span><div class="flowCardActions"><button type="button" data-action="toggle-connector-visibility" aria-label="${hidden?'Show':'Hide'} connection for step ${n}" aria-pressed="${!hidden}" title="${hidden?'Show':'Hide'} while editing; playback is unchanged">${icon(hidden?'eyeOff':'eye')}</button><button type="button" data-action="edit-flow" aria-label="Edit step ${n}" title="Edit step">${icon('pencil')}</button></div></div>
+      ${expanded?flowDetailsHtml(flow):''}${stepProgressHtml()}</div>`;
+  }
+
+  function flowDetailsHtml(flow){
+    const flows=orderedFlows(),first=flows[0]?.id===flow.id,last=flows.at(-1)?.id===flow.id;
+    return `<div class="stepDetails" id="details-${flow.id}"><div class="stepReadout"><strong>Processing action</strong><p>${escapeHtml(flow.actionText||'No processing action')}</p>${flow.notes?`<strong>Notes</strong><p>${escapeHtml(flow.notes)}</p>`:''}</div>${flow.processingImageDataUrl?`<img class="stepImage" src="${escapeHtml(flow.processingImageDataUrl)}" alt="Processing image for ${escapeHtml(flow.messageText)}">`:''}<div class="moveStepActions"><button data-action="move-up" ${first?'disabled':''}>${icon('up')}Move up</button><button data-action="move-down" ${last?'disabled':''}>${icon('down')}Move down</button></div><div class="detailActions"><button data-action="start-here">${icon('play')}Play from here</button><button data-action="reset-label" ${flow.labelOffset?'':'disabled'}>${icon('reset')}Reset label position</button><button data-action="delete-flow" class="danger">${icon('trash')}Delete step</button></div></div>`;
   }
 
   function flowEditorHtml(flow){
-    return `<div data-flow-id="${flow.id}" class="flowEditorContent">
-      <section class="flowEditorSection flowEditorSectionCompact" aria-label="Step order and timing">
-        <div class="sectionTitle">Step</div>
-        <div class="formRow"><label>Order</label><div class="stepOrderSpinner" aria-label="Move step order"><button data-action="step-order-down" type="button" title="Move step down" aria-label="Move step down">↓</button><span data-step-order-display>${escapeHtml(flow.sequenceNumber || '')}</span><button data-action="step-order-up" type="button" title="Move step up" aria-label="Move step up">↑</button></div></div>
-        <div class="formRow"><label>Timing</label><select data-edit="timing">
-          <option value="afterPrevious" ${flow.timing !== 'withPrevious' ? 'selected' : ''}>After previous</option>
-          <option value="withPrevious" ${flow.timing === 'withPrevious' ? 'selected' : ''}>With previous</option>
-        </select></div>
-      </section>
-      <section class="flowEditorSection" aria-label="Connection routing">
-        <div class="sectionTitle">Connection</div>
-        <div class="formRow"><label>Source</label>${componentSelectHtml('sourceComponentId', flow.sourceComponentId)}</div>
-        <div class="formRow"><label>Target</label>${componentSelectHtml('targetComponentId', flow.targetComponentId)}</div>
-        <div class="formRow"><label>Source port</label>${portSelectHtml('sourcePortId', flow.sourcePortId || '', flow.sourceComponentId)}</div>
-        <div class="formRow"><label>Target port</label>${portSelectHtml('targetPortId', flow.targetPortId || '', flow.targetComponentId)}</div>
-        <div class="formRow"><label>Style</label><select data-edit="connectionStyle">
-          <option value="straight" ${flow.connectionStyle === 'straight' ? 'selected' : ''}>Straight</option>
-          <option value="arc" ${flow.connectionStyle === 'arc' ? 'selected' : ''}>Curved</option>
-          <option value="angular" ${flow.connectionStyle === 'angular' ? 'selected' : ''}>Elbow</option>
-        </select></div>
-      </section>
-      <section class="flowEditorSection flowEditorTextSection" aria-label="Message and processing details">
-        <div class="sectionTitle">Message & processing</div>
-        <div class="formRow wide"><label>Message</label><input data-edit="messageText" type="text" value="${escapeHtml(flow.messageText || '')}" placeholder="Message name"></div>
-        <div class="formRow wide"><label>Processing action</label><textarea data-edit="actionText" rows="4" placeholder="What does the target component do?">${escapeHtml(flow.actionText || '')}</textarea></div>
-        <div class="formRow wide"><label>Notes</label><textarea data-edit="notes" rows="3" placeholder="Optional notes">${escapeHtml(flow.notes || '')}</textarea></div>
-      </section>
-      <section class="flowEditorSection flowEditorImageSection" aria-label="Processing image">
-        <div class="sectionTitle">Processing image</div>
-        <div class="imageAttachmentStatus"><span>${flow.processingImageDataUrl ? 'Processing image attached. It will be shown in presentation mode.' : 'No processing image attached.'}</span><span>${flow.processingImageDataUrl ? '🖼' : '—'}</span></div>
-        <div class="detailActions">
-          <button data-action="upload-image" type="button">Upload / replace image</button>
-          <button data-action="remove-image" type="button">Remove image</button>
-          <button data-action="delete-flow" type="button" class="danger">Delete step</button>
-        </div>
-      </section>
-    </div>`;
+    const first=orderedFlows()[0]?.id===flow.id;
+    return `<div data-flow-id="${flow.id}" class="flowEditorContent"><section class="flowEditorSection" aria-label="Message and processing details">
+      <div class="formRow wide"><label>Message</label><input data-edit="messageText" type="text" value="${escapeHtml(flow.messageText||'')}" placeholder="Message name"></div>
+      <div class="formRow"><label>Source</label>${componentSelectHtml('sourceComponentId',flow.sourceComponentId)}</div><div class="formRow"><label>Target</label>${componentSelectHtml('targetComponentId',flow.targetComponentId)}</div>
+      <div class="formRow wide"><label>Timing</label><select data-edit="timing" ${first?'disabled':''}><option value="afterPrevious" ${flow.timing!=='withPrevious'?'selected':''}>${first?'First message':'After previous'}</option><option value="withPrevious" ${flow.timing==='withPrevious'?'selected':''}>With previous</option></select></div>
+      <div class="formRow wide"><label>Processing action</label><textarea data-edit="actionText" rows="3" placeholder="What happens at the destination?">${escapeHtml(flow.actionText||'')}</textarea></div><div class="formRow wide"><label>Notes</label><textarea data-edit="notes" rows="2" placeholder="Optional context">${escapeHtml(flow.notes||'')}</textarea></div></section>
+      <details class="flowEditorAdvanced"><summary>Routing and step order</summary><section class="flowEditorSection" aria-label="Connection routing"><div class="formRow"><label>Source port</label>${portSelectHtml('sourcePortId',flow.sourcePortId||'',flow.sourceComponentId)}</div><div class="formRow"><label>Target port</label>${portSelectHtml('targetPortId',flow.targetPortId||'',flow.targetComponentId)}</div><div class="formRow"><label>Style</label><select data-edit="connectionStyle">${[['straight','Straight'],['arc','Curved'],['angular','Elbow']].map(([v,l])=>`<option value="${v}" ${flow.connectionStyle===v?'selected':''}>${l}</option>`).join('')}</select></div><div class="formRow"><label>Order</label><div class="stepOrderSpinner"><button data-action="step-order-up" aria-label="Move step up" ${first?'disabled':''}>${icon('up')}</button><span data-step-order-display>${escapeHtml(flow.sequenceNumber)}</span><button data-action="step-order-down" aria-label="Move step down" ${orderedFlows().at(-1)?.id===flow.id?'disabled':''}>${icon('down')}</button></div></div></section></details>
+      <details class="flowEditorAdvanced"><summary>Processing image${flow.processingImageDataUrl?' · Attached':''}</summary><section class="flowEditorSection flowEditorImageSection" aria-label="Processing image">${flow.processingImageDataUrl?`<img class="stepImage" src="${escapeHtml(flow.processingImageDataUrl)}" alt="Processing image">`:'<p class="propertyHint">Add an image to show while this step is processing.</p>'}<div class="detailActions"><button data-action="upload-image" type="button">Upload / replace image</button><button data-action="remove-image" type="button" ${flow.processingImageDataUrl?'':'disabled'}>Remove image</button></div></section></details></div>`;
   }
 
   function componentSelectHtml(field, selectedId){
     return `<select data-edit="${field}">${state.components.map(c => `<option value="${c.id}" ${c.id===selectedId ? 'selected' : ''}>${escapeHtml(c.name || 'Component')}</option>`).join('')}</select>`;
   }
 
+  function dashPattern(style,width=1.5){return style==='dashed'?`${width*4} ${width*3}`:style==='dotted'?`${width} ${width*2}`:'none';}
+
+  function resetComponentAppearance(comp){
+    for(const key of ['fillOpacity','borderOpacity','textOpacity','borderStyle','fontSize','fontWeight','textAlign'])delete comp[key];
+    Object.assign(comp,elements.style(state.settings.diagramTheme,state.settings.diagramPalette,comp.shape));
+  }
+
+  function setupAppearance(){
+    appearance=globalThis.MessageFlowAppearance.create({panel:els.propertiesPanel,
+      getTargets:()=>state.ui.selectedComponentIds.length?state.ui.selectedComponentIds.map(id=>{const c=findComponent(id);return {model:c,defaults:c?{borderColor:'#334155',borderWidth:2,textColor:'#0f172a',fontSize:c.shape==='text'?18:c.shape==='package'?13:elements.attached(c.shape)?12:14,fontWeight:elements.attached(c.shape)?500:600,textAlign:c.shape==='package'?'left':'center',fillOpacity:c.shape==='package'?.38:1}:null};}).filter(t=>t.model):selectedFlow()?[{model:selectedFlow().style ||= {}}]:[],
+      preview:()=>{renderCanvas();},commit:()=>{pushHistory('edit appearance');renderToolbarState();},
+      reset:()=>{state.ui.selectedComponentIds.forEach(id=>resetComponentAppearance(findComponent(id)));const f=selectedFlow();if(f)f.style={color:state.settings.diagramTheme==='monochrome'?'#525252':'#64748b',textColor:'#202b3c',thickness:1.7};pushHistory('reset appearance');renderAll();}});
+  }
+
   function renderProperties(){
-    const comp = selectedComponent();
-    const flow = selectedFlow();
+    const comp=selectedComponent(),flow=selectedFlow(),count=state.ui.selectedComponentIds.length;
+    if(count>1){els.propertiesPanel.innerHTML=`<div class="inspectorSelection"><strong>${count} elements selected</strong><span>Shared appearance · mixed values are shown</span></div>${appearance.html()}`;return;}
     if(comp){
-      els.propertiesPanel.innerHTML = `<div class="formRow wide"><label>Component name</label><input id="propName" type="text" value="${escapeHtml(comp.name)}"></div>
-        <div class="formRow"><label>Shape</label><select id="propShape">
-          ${SHAPES.map(s => `<option value="${s}" ${comp.shape===s?'selected':''}>${shapeLabel(s)}</option>`).join('')}
-        </select></div>
-        <div class="propGrid">
-          <label class="small">Fill <input id="propFill" type="color" value="${comp.fillColor || '#ffffff'}"></label>
-          <label class="small">Border <input id="propBorder" type="color" value="${comp.borderColor || '#334155'}"></label>
-          <label class="small">Text <input id="propText" type="color" value="${comp.textColor || '#0f172a'}"></label>
-        </div>
-        <div class="detailActions"><button id="duplicatePropBtn">Duplicate</button></div>`;
-      return;
+      els.propertiesPanel.innerHTML=`<section class="inspectorSection" aria-label="Element"><div class="inspectorHeading"><h3>Element</h3><span>${escapeHtml(shapeLabel(comp.shape))}</span></div><div class="formRow wide"><label>Component name</label><input id="propName" type="text" value="${escapeHtml(comp.name)}"></div><div class="formRow wide"><label>Shape</label><select id="propShape">${SHAPES.filter(s=>elements.attached(comp.shape)?s===comp.shape:!elements.attached(s)).map(s=>`<option value="${s}" ${comp.shape===s?'selected':''}>${shapeLabel(s)}</option>`).join('')}</select></div><details class="inspectorAdvanced"><summary>${elements.attached(comp.shape)?'Attachment':'UML and details'}</summary>${elementProperties(comp)}</details></section>${appearance.html()}${elements.attached(comp.shape)?'':`<details class="inspectorAdvanced inspectorSection"><summary>Layout</summary><div class="inspectorColumns"><label class="inspectorField">Width<input id="propWidth" type="number" min="40" max="4000" value="${comp.width}"></label><label class="inspectorField">Height<input id="propHeight" type="number" min="30" max="4000" value="${comp.height}"></label></div></details>`}<div class="detailActions"><button id="duplicatePropBtn">${icon('copy')}Duplicate</button></div>`;return;
     }
     if(flow){
-      els.propertiesPanel.innerHTML = `<div class="formRow wide"><label>Message</label><input id="propMessage" type="text" value="${escapeHtml(flow.messageText || '')}"></div>
-        <div class="formRow wide"><label>Processing action</label><textarea id="propAction" rows="3">${escapeHtml(flow.actionText || '')}</textarea></div>
-        <div class="formRow"><label>Order</label><input id="propSequence" type="text" inputmode="decimal" value="${escapeHtml(flow.sequenceNumber || '')}" placeholder="e.g. 3"></div>
-        <div class="formRow"><label>Timing</label><select id="propTiming">
-          <option value="afterPrevious" ${flow.timing !== 'withPrevious' ? 'selected' : ''}>After previous</option>
-          <option value="withPrevious" ${flow.timing === 'withPrevious' ? 'selected' : ''}>With previous</option>
-        </select></div>
-        <div class="formRow"><label>Connection</label><select id="propConnectionStyle">
-          <option value="straight" ${flow.connectionStyle==='straight'?'selected':''}>Straight</option><option value="arc" ${flow.connectionStyle==='arc'?'selected':''}>Curved</option><option value="angular" ${flow.connectionStyle==='angular'?'selected':''}>Elbow</option>
-        </select></div>
-        <div class="formRow"><label>Source port</label>${portSelectHtml('propSourcePort', flow.sourcePortId || '', flow.sourceComponentId).replace('data-edit="propSourcePort"','id="propSourcePort"')}</div>
-        <div class="formRow"><label>Target port</label>${portSelectHtml('propTargetPort', flow.targetPortId || '', flow.targetComponentId).replace('data-edit="propTargetPort"','id="propTargetPort"')}</div>
-        <div class="propGrid"><label class="small">Line <input id="propLineColor" type="color" value="${flow.style?.color || '#475569'}"></label><label class="small">Text <input id="propLineText" type="color" value="${flow.style?.textColor || '#0f172a'}"></label></div>`;
-      return;
+      els.propertiesPanel.innerHTML=`<section class="inspectorSection"><div class="inspectorHeading"><h3>Step ${escapeHtml(flow.sequenceNumber)}</h3><button type="button" id="editSelectedFlow">${icon('pencil')}Edit step</button></div><strong>${escapeHtml(flow.messageText||'Message')}</strong><p class="propertyHint">${escapeHtml(componentName(flow.sourceComponentId))} → ${escapeHtml(componentName(flow.targetComponentId))}</p><div class="formRow"><label>Connection</label><select id="propConnectionStyle"><option value="straight" ${flow.connectionStyle==='straight'?'selected':''}>Straight</option><option value="arc" ${flow.connectionStyle==='arc'?'selected':''}>Curved</option><option value="angular" ${flow.connectionStyle==='angular'?'selected':''}>Elbow</option></select></div></section>${appearance.html(true)}<button id="resetLabelBtn" ${flow.labelOffset?'':'disabled'}>${icon('reset')}Reset label position</button>`;return;
     }
-    els.propertiesPanel.innerHTML = `<div style="color:var(--muted);font-size:13px;line-height:1.45">Select a component or message flow to edit its properties. Double-click labels on the canvas to rename them directly.</div>`;
+    els.propertiesPanel.innerHTML='<div class="inspectorEmpty">Select an element or connection to edit its properties.</div>';
   }
 
-  function shapeLabel(s){
-    return ({
-      package:'Package / visual group',
-      roundedRectangle:'Rounded rectangle', rectangle:'Rectangle', ellipse:'Ellipse', diamond:'Diamond', hexagon:'Hexagon',
-      triangle:'Triangle', pentagon:'Pentagon', trapezoid:'Trapezoid', parallelogram:'Parallelogram',
-      cylinder:'Cylinder / database', queue:'Queue / stack', document:'Document', note:'Note', cloud:'Cloud', actor:'Actor / external system'
-    }[s] || s);
-  }
+  function shapeLabel(s){ return elements.get(s).name; }
 
   function renderImagePanels(){
-    const flows = activeFlows();
-    const processing = state.ui.presentationMode && animation.running && animation.phase === 'processing' && flows.length;
-    const images = processing ? flows.filter(f => f.processingImageDataUrl) : [];
-    const label = processing
-      ? `Step ${activeSequenceLabel()}: ${flows.length > 1 ? `${flows.length} simultaneous messages` : (flows[0].messageText || 'Message')}`
-      : 'Processing image appears with the processing action';
-    els.presentationStepLabel.textContent = label;
-    els.presentationImagePreview.innerHTML = images.length
-      ? images.map(f => `<div class="presentationImageItem"><img src="${f.processingImageDataUrl}" alt="Processing image for ${escapeHtml(f.messageText || 'message')}"><span>${escapeHtml(f.messageText || 'Message')}</span></div>`).join('')
-      : 'No processing image shown for this phase';
+    const groups = animationGroups(), index = currentMessageIndex();
+    const flows = groups[index]?.flows || [];
+    const ordered = orderedFlows();
+    const positions = flows.map(f => ordered.findIndex(item => item.id === f.id)+1);
+    const count = positions.length > 1 ? positions[0] + '–' + positions.at(-1) : positions[0];
+    const counter = flows.length ? (flows.length > 1 ? 'Messages ' : 'Message ') + count + ' of ' + ordered.length : ordered.length + ' messages';
+    const phase = ({transfer:'Sending',arrived:'Received',processing:'Processing',completed:'Finished',ready:'Ready',stopped:'Ready'})[animation.phase] || 'Ready';
+    const phaseLabel = animation.manualWaiting ? 'Waiting for Next' : animation.paused ? 'Paused · ' + phase : phase;
+    $('playbackCounter').textContent = counter;
+    $('playbackPhase').textContent = ordered.length ? phaseLabel : 'Connect components to play';
+    $('playbackSummary').title = counter + ' · ' + $('playbackPhase').textContent;
+    $('presentationSummary').hidden = !state.ui.presentationMode;
+    $('presentationCounter').textContent = counter;
+    $('presentationPhase').textContent = phaseLabel;
+    $('presentationMessage').textContent = flows.length > 1 ? flows.length + ' messages together' : flows[0]?.messageText || 'Your flow, one message at a time';
+    $('presentationRoute').textContent = flows.length > 1 ? flows.map(f => f.messageText).join(' · ') : flows.length ? componentName(flows[0].sourceComponentId) + ' → ' + componentName(flows[0].targetComponentId) : 'Choose a message below or press Play to begin.';
+    els.presentationStepLabel.textContent = flows.length > 1 ? 'Simultaneous messages' : 'Message details';
+    $('presentationDetails').innerHTML = flows.length ? flows.map(f => '<section class="storyMessage">'
+      + (flows.length > 1 ? '<h3>' + escapeHtml(f.messageText) + '</h3><p class="storyRoute">' + escapeHtml(componentName(f.sourceComponentId) + ' → ' + componentName(f.targetComponentId)) + '</p>' : '')
+      + (f.actionText ? '<span class="storyLabel">Processing action</span><p>' + escapeHtml(f.actionText) + '</p>' : '')
+      + (f.notes ? '<span class="storyLabel">Notes</span><p class="storyNote">' + escapeHtml(f.notes) + '</p>' : '')
+      + (!f.actionText && !f.notes ? '<p class="storyNote">No additional details for this message.</p>' : '') + '</section>').join('') : '<p class="storyNote">Add connections in the editor to tell your story.</p>';
+    const images = flows.filter(f => f.processingImageDataUrl);
+    els.presentationImagePreview.hidden = !images.length;
+    els.presentationImagePreview.innerHTML = images.map(f => '<figure class="storyImage"><img src="' + escapeHtml(f.processingImageDataUrl) + '" alt="Processing image for ' + escapeHtml(f.messageText) + '">' + (flows.length > 1 ? '<figcaption>' + escapeHtml(f.messageText) + '</figcaption>' : '') + '</figure>').join('');
+    const focusedGroup = document.activeElement?.dataset.presentationGroup;
+    $('presentationTimeline').innerHTML = groups.map((group,i) => {
+      const names = group.flows.map(f => f.messageText || 'Message').join(' + ');
+      // Keep the navigation name stable as its nested progress value changes.
+      return `<button class="timelineMessage" data-presentation-group="${i}" aria-label="${escapeHtml(group.label+'. '+names)}" aria-current="${i===index?'step':'false'}"><span class="timelineNumber">${escapeHtml(group.label)}</span><span class="timelineText">${escapeHtml(names)}${group.flows.length>1?'<small>Together</small>':''}</span>${stepCompletionHtml()}${stepProgressHtml()}</button>`;
+    }).join('');
+    renderPlaybackProgress();
+    if(focusedGroup !== undefined) $('presentationTimeline').querySelector('[data-presentation-group="' + focusedGroup + '"]')?.focus({preventScroll:true});
   }
 
   function renderFlowEditorIfOpen(){
@@ -1217,18 +1498,35 @@
     if(!flow) return;
     els.flowEditorTitle.textContent = `Edit step ${flow.sequenceNumber || ''}: ${flow.messageText || 'Message'}`;
     els.flowEditorBody.dataset.flowId = flow.id;
+    const opened=[...els.flowEditorBody.querySelectorAll('details')].map(d=>d.open);
     els.flowEditorBody.innerHTML = flowEditorHtml(flow);
+    els.flowEditorBody.querySelectorAll('details').forEach((d,i)=>d.open=opened[i] || false);
+    associateLabels(els.flowEditorBody);
+  }
+
+  function associateLabels(container){
+    container.querySelectorAll('.formRow').forEach((row, index) => {
+      const label = row.querySelector('label');
+      const control = row.querySelector('input,select,textarea');
+      if(label && control){
+        if(!control.id) control.id = `${container.id}-field-${index}`;
+        label.htmlFor = control.id;
+      }
+    });
   }
 
   function openFlowEditor(flowId){
     const flow = findFlow(flowId);
     if(!flow) return;
+    stopAnimation(false);
     selectFlow(flowId);
     renderAll();
-    flowEditorOriginal = JSON.parse(JSON.stringify(flow));
+    flowEditorOriginalAll = JSON.parse(JSON.stringify(state.messageFlows));
+    els.flowEditorBody.innerHTML='';
     populateFlowEditor(flow);
     els.flowEditorModal.classList.add('open');
     els.flowEditorModal.setAttribute('aria-hidden', 'false');
+    els.app.inert = true;
     const first = els.flowEditorBody.querySelector('[data-edit="messageText"]') || els.flowEditorBody.querySelector('input,select,textarea,button');
     if(first) first.focus({preventScroll:true});
   }
@@ -1236,35 +1534,36 @@
   function closeFlowEditor(mode='ok'){
     if(!els.flowEditorModal) return;
     const flowId = els.flowEditorBody?.dataset.flowId;
-    const flow = flowId ? findFlow(flowId) : null;
-    if(mode === 'cancel' && flow && flowEditorOriginal){
-      Object.keys(flow).forEach(k => delete flow[k]);
-      Object.assign(flow, JSON.parse(JSON.stringify(flowEditorOriginal)));
-      saveLocal(true);
-      renderAll();
-    }else if(mode === 'ok' && flow && flowEditorOriginal){
-      if(JSON.stringify(flow) !== JSON.stringify(flowEditorOriginal)) pushHistory('edit flow step');
-      saveLocal(true);
-      renderAll();
-    }
-    flowEditorOriginal = null;
+    const original = flowEditorOriginalAll;
+    if(mode==='ok'){const flow=findFlow(flowId);if(flow)flow.messageText=flow.messageText.trim() || 'Message';}
+    const changed = original && JSON.stringify(state.messageFlows) !== JSON.stringify(original);
+    if(mode === 'cancel' && original) state.messageFlows = original;
+    flowEditorOriginalAll = null;
     els.flowEditorModal.classList.remove('open');
     els.flowEditorModal.setAttribute('aria-hidden', 'true');
+    els.app.inert = false;
+    if(mode === 'ok' && changed) pushHistory('edit flow step');
+    renderAll();
+    saveLocal(true);
+    const trigger = Array.from(els.flowList.querySelectorAll('.flowItem')).find(item => item.dataset.flowId === flowId)?.querySelector('button[data-action="edit-flow"]');
+    (trigger || $('addComponentBtn')).focus({preventScroll:true});
   }
 
   function onFlowEditorInput(e){
+    // Hiding the dialog can emit a final change event after Cancel restored state.
+    if(!flowEditorOriginalAll) return;
     const field = e.target.dataset.edit;
     if(!field) return;
     const flowId = els.flowEditorBody.dataset.flowId;
     const f = findFlow(flowId);
     if(!f) return;
     if(field === 'sequenceNumber') f[field] = e.target.value.trim();
-    else if(field === 'timing') f.timing = e.target.value === 'withPrevious' ? 'withPrevious' : 'afterPrevious';
+    else if(field === 'timing') f.timing = e.target.value === 'withPrevious' && orderedFlows()[0]?.id!==f.id ? 'withPrevious' : 'afterPrevious';
     else f[field] = e.target.value;
     if(field === 'sourceComponentId') f.sourcePortId = '';
     if(field === 'targetComponentId') f.targetPortId = '';
     state.ui.selectedFlowId = f.id;
-    renderCanvas(); renderFlowPanel(); renderProperties(); renderImagePanels(); updateStatus(); saveLocal(true);
+    renderCanvas(); renderFlowPanel(); renderProperties(); associateLabels(els.propertiesPanel); renderImagePanels(); updateStatus(); saveLocal(true);
     if(field === 'sourceComponentId' || field === 'targetComponentId') populateFlowEditor(f);
   }
 
@@ -1301,9 +1600,8 @@
     }
     if(action === 'delete-flow'){
       state.messageFlows = state.messageFlows.filter(f => f.id !== flowId);
-      flowEditorOriginal = null;
-      flowEditorOriginalAll = null;
-      closeFlowEditor('delete'); clearSelection(); pushHistory('delete flow'); renderAll();
+      renumberFlows();
+      clearSelection(); closeFlowEditor('ok');
     }
   }
 
@@ -1318,7 +1616,12 @@
     els.modeStatus.textContent = mode;
     const sc = state.ui.selectedComponentIds.length;
     els.selectionStatus.textContent = sc ? `${sc} component${sc>1?'s':''} selected` : state.ui.selectedFlowId ? '1 message flow selected' : 'No selection';
-    els.animStatus.textContent = animation.running ? `Animation: step ${activeSequenceLabel() || animation.index + 1}, ${animation.phase}${activeFlows().length > 1 ? ' (' + activeFlows().length + ' simultaneous)' : ''}` : 'Animation stopped';
+    els.animStatus.textContent = animation.running ? `${animation.paused ? 'Paused' : 'Animation'}: step ${activeSequenceLabel() || animation.index + 1}, ${animation.phase}${activeFlows().length > 1 ? ' (' + activeFlows().length + ' simultaneous)' : ''}` : 'Animation stopped';
+    const hint = placement ? (elements.attached(placement.shape) ? `Place ${shapeLabel(placement.shape).toLowerCase()} on a component${placement.shape === 'umlPort' ? '' : ' or port'} · Esc to cancel` : `Place ${shapeLabel(placement.shape).toLowerCase()} · click to place · Esc to cancel`)
+      : connectSourceId ? 'Drag to a destination, or click a target handle · Esc to cancel'
+      : state.settings.activeCanvasMode === 'connect' ? 'Choose a source connection handle, then a destination' : '';
+    $('drawingHint').textContent = hint;
+    $('drawingHint').hidden = !hint;
   }
 
   function isSelectedComponent(id){ return state.ui.selectedComponentIds.includes(id); }
@@ -1347,31 +1650,62 @@
     };
   }
 
-  function addComponent(x, y){
-    const count = state.components.length + 1;
-    const shape = state.settings.defaultShape || 'roundedRectangle';
-    const isPackage = shape === 'package';
-    const isTextItem = shape === 'text';
-    const width = isPackage ? 320 : (isTextItem ? 210 : 170), height = isPackage ? 220 : (isTextItem ? 54 : 90);
-    const c = {
-      id: id('cmp'),
-      name: isPackage ? `Package ${state.components.filter(c => c.shape === 'package').length + 1}` : (isTextItem ? `Text ${state.components.filter(c => c.shape === 'text').length + 1}` : `Component ${count}`),
-      shape,
-      x: snap(x - width/2), y: snap(y - height/2), width, height,
-      fillColor: isPackage ? '#e0f2fe' : (isTextItem ? 'transparent' : '#ffffff'), borderColor: isPackage ? '#2563eb' : (isTextItem ? 'transparent' : '#334155'), textColor: isPackage ? '#1e3a8a' : '#0f172a', borderWidth: isTextItem ? 0 : 2,
-      zIndex: isPackage ? 0 : nextZ()
-    };
-    state.components.push(c);
-    selectComponent(c.id, false);
-    pushHistory('add component');
+  function beginPlacement(shape=state.settings.defaultShape){
+    resetConnectionDraft(false);
+    state.settings.defaultShape = shape;
+    const rect = els.svg.getBoundingClientRect();
+    placement = {shape, point:screenToWorld({x:rect.left + rect.width/2, y:rect.top + rect.height/2})};
     renderAll();
+    els.svg.focus({preventScroll:true});
+  }
+
+  function placementComponent(){
+    if(!placement?.point) return null;
+    const {shape,point} = placement, {width,height} = elements.get(shape);
+    const c={shape,name:shapeLabel(shape),x:snap(point.x-width/2),y:snap(point.y-height/2),width,height,fillColor:'#eff6ff',borderColor:'#2563eb',textColor:'#2563eb'};
+    if(elements.attached(shape)){
+      const attachment=attachmentAt(point,shape);
+      if(attachment){Object.assign(c,attachment);elements.sync([...state.components,c]);}
+    }
     return c;
+  }
+
+  function renderPlacementPreview(){
+    els.overlayLayer.querySelector('.placementPreview')?.remove();
+    const c = placementComponent();
+    if(!c) return;
+    const g = svgEl('g', {class:'placementPreview', 'aria-hidden':'true'});
+    g.append(componentShapeEl(c), componentTextEl(c));
+    els.overlayLayer.appendChild(g);
+  }
+
+  function commitPlacement(point){
+    if(!placement) return;
+    const shape=placement.shape;
+    if(elements.attached(shape) && !attachmentAt(point,shape)){showToast('Place this element on a component'+(shape==='umlPort'?'':' or port'));return;}
+    state.settings.defaultShape=shape;
+    placement=null;
+    addComponent(point.x,point.y);
+    library?.used(shape);
+    els.svg.focus({preventScroll:true});
+  }
+
+  function addComponent(x,y){
+    const shape=state.settings.defaultShape || 'umlComponent', entry=elements.get(shape),{width,height}=entry;
+    const count=state.components.filter(c=>c.shape===shape).length+1;
+    const c={id:id('cmp'),name:entry.name+' '+count,shape,x:snap(x-width/2),y:snap(y-height/2),width,height,
+      ...elements.style(state.settings.diagramTheme,state.settings.diagramPalette,shape),zIndex:shape==='package'?0:nextZ()};
+    if(elements.attached(shape)) Object.assign(c,attachmentAt({x,y},shape));
+    if(shape==='umlNode') c.nodeKind='node';
+    state.components.push(c); elements.sync(state.components);
+    selectComponent(c.id,false);pushHistory('add element');renderAll();return c;
   }
 
   function nextZ(){ return Math.max(0, ...state.components.map(c => c.zIndex || 0)) + 1; }
 
   function addFlow(sourceId, targetId, sourcePortId=null, targetPortId=null, connectionStyle=null){
     if(!sourceId || !targetId) return;
+    renumberFlows();
     const f = {
       id: id('flow'),
       sourceComponentId: sourceId,
@@ -1387,7 +1721,7 @@
       notes: '',
       connectionStyle: connectionStyle || state.settings.defaultConnectionStyle || 'arc',
       controlPoint: null,
-      style: { color:'#475569', thickness:2.2, textColor:'#0f172a' }
+      style: { color:'#64748b', thickness:1.7, textColor:'#202b3c' }
     };
     state.messageFlows.push(f);
     selectFlow(f.id);
@@ -1395,7 +1729,6 @@
     connectSourcePortId = null;
     connectChosenStyle = null;
     connectPreviewPoint = null;
-    hideConnectionChoiceOverlay();
     state.settings.activeCanvasMode = 'select';
     pushHistory('add flow');
     renderAll();
@@ -1403,6 +1736,7 @@
   }
 
   function selectComponent(componentId, additive){
+    sidebarTab = 'properties';
     if(additive){
       if(isSelectedComponent(componentId)) state.ui.selectedComponentIds = state.ui.selectedComponentIds.filter(id => id !== componentId);
       else state.ui.selectedComponentIds.push(componentId);
@@ -1413,21 +1747,25 @@
   }
 
   function selectFlow(flowId){
+    lastComponentClick = null;
+    sidebarTab = 'flow';
     state.ui.selectedComponentIds = [];
     state.ui.selectedFlowId = flowId;
-    state.ui.expandedFlowId = null;
   }
 
   function clearSelection(){
+    lastComponentClick = null;
     state.ui.selectedComponentIds = [];
     state.ui.selectedFlowId = null;
   }
 
   function deleteSelection(){
-    const ids = new Set(state.ui.selectedComponentIds);
+    const ids = elements.descendants(state.ui.selectedComponentIds,state.components);
     if(ids.size){
       state.components = state.components.filter(c => !ids.has(c.id));
+      state.components.forEach(c=>{if(ids.has(c.annotatedElementId))delete c.annotatedElementId;});
       state.messageFlows = state.messageFlows.filter(f => !ids.has(f.sourceComponentId) && !ids.has(f.targetComponentId));
+      renumberFlows();
       clearSelection();
       pushHistory('delete components');
       renderAll();
@@ -1436,6 +1774,7 @@
     if(state.ui.selectedFlowId){
       const idToDelete = state.ui.selectedFlowId;
       state.messageFlows = state.messageFlows.filter(f => f.id !== idToDelete);
+      renumberFlows();
       if(state.ui.expandedFlowId === idToDelete) state.ui.expandedFlowId = null;
       clearSelection();
       pushHistory('delete flow');
@@ -1444,7 +1783,8 @@
   }
 
   function duplicateSelection(){
-    const selected = state.components.filter(c => state.ui.selectedComponentIds.includes(c.id));
+    const copyIds = elements.descendants(state.ui.selectedComponentIds,state.components,true);
+    const selected = state.components.filter(c => copyIds.has(c.id));
     if(!selected.length) return showToast('Select one or more components to duplicate');
     const idMap = new Map();
     const copies = selected.map(c => {
@@ -1458,8 +1798,11 @@
     const flowCopies = state.messageFlows.filter(f => idMap.has(f.sourceComponentId) && idMap.has(f.targetComponentId)).map(f => ({
       ...JSON.parse(JSON.stringify(f)), id:id('flow'), sourceComponentId:idMap.get(f.sourceComponentId), targetComponentId:idMap.get(f.targetComponentId), sequenceNumber:state.messageFlows.length + 1
     }));
+    remapAttachments(copies,idMap);
     state.components.push(...copies);
+    const existingFlows = orderedFlows();
     state.messageFlows.push(...flowCopies);
+    renumberFlows([...existingFlows, ...flowCopies]);
     state.ui.selectedComponentIds = copies.map(c => c.id);
     state.ui.selectedFlowId = null;
     pushHistory('duplicate');
@@ -1467,18 +1810,19 @@
   }
 
   function copySelection(cut=false){
-    const ids = new Set(state.ui.selectedComponentIds);
+    const ids = elements.descendants(state.ui.selectedComponentIds,state.components,true);
     if(!ids.size) return showToast('Select components to copy');
     clipboard = {
       components: state.components.filter(c => ids.has(c.id)).map(c => JSON.parse(JSON.stringify(c))),
       flows: state.messageFlows.filter(f => ids.has(f.sourceComponentId) && ids.has(f.targetComponentId)).map(f => JSON.parse(JSON.stringify(f)))
     };
-    if(cut) deleteSelection();
-    else showToast('Copied');
+    if(cut){state.ui.selectedComponentIds=[...ids];deleteSelection();}
+    else { showToast('Copied'); renderToolbarState(); }
   }
 
   function pasteSelection(){
     if(!clipboard?.components?.length) return showToast('Clipboard is empty');
+    if(clipboard.components.some(c=>c.ownerId && !clipboard.components.some(o=>o.id===c.ownerId) && !findComponent(c.ownerId))) return showToast('The copied attachment needs its original owner. Copy its component as well.');
     const idMap = new Map();
     const offset = 36;
     const copies = clipboard.components.map(c => {
@@ -1492,18 +1836,19 @@
       copy.id = id('flow'); copy.sourceComponentId = idMap.get(f.sourceComponentId); copy.targetComponentId = idMap.get(f.targetComponentId); copy.sequenceNumber = state.messageFlows.length + 1;
       return copy;
     }).filter(f => f.sourceComponentId && f.targetComponentId);
+    remapAttachments(copies,idMap);
     state.components.push(...copies);
+    const existingFlows = orderedFlows();
     state.messageFlows.push(...flows);
+    renumberFlows([...existingFlows, ...flows]);
     state.ui.selectedComponentIds = copies.map(c => c.id);
     state.ui.selectedFlowId = null;
     pushHistory('paste');
     renderAll();
   }
 
-  function normalizeSequences(){
-    orderedFlows().forEach((f, i) => { f.sequenceNumber = i + 1; if(i === 0) f.timing = 'afterPrevious'; });
-    pushHistory('normalize');
-    renderAll();
+  function renumberFlows(flows=orderedFlows()){
+    flows.forEach((f, i) => { f.sequenceNumber = i + 1; if(i === 0) f.timing = 'afterPrevious'; });
   }
 
   function validateFlow(showSuccess=true){
@@ -1562,25 +1907,98 @@
     const paths = animation.pathCache?.paths || [];
     return paths.find(p => p.flowId === flowId) || null;
   }
-  function animationSourceIds(){ return new Set(activeAnimatedFlows().map(f => f.sourceComponentId)); }
-  function animationTargetIds(){ return new Set(activeAnimatedFlows().map(f => f.targetComponentId)); }
-  function animationProcessingIds(){ return animation.phase === 'processing' ? new Set(activeAnimatedFlows().map(f => f.targetComponentId)) : new Set(); }
-  function animationSourceId(){ return null; }
-  function animationTargetId(){ return null; }
-  function animationProcessingId(){ return null; }
+  function animationSourceIds(){ return new Set(animation.running && animation.phase === 'transfer' ? activeAnimatedFlows().map(f => f.sourceComponentId) : []); }
+  function animationTargetIds(){ return new Set(animation.running && ['arrived','processing'].includes(animation.phase) && !animation.manualWaiting ? activeAnimatedFlows().map(f => f.targetComponentId) : []); }
+  function processingPhaseEnabled(){ return !state.ui.presentationMode || state.settings.showProcessingActionInPresentation; }
+  function animationProcessingIds(){ return animation.running && !animation.manualWaiting && animation.phase === 'processing' && processingPhaseEnabled() ? new Set(activeAnimatedFlows().map(f => f.targetComponentId)) : new Set(); }
 
-  function startAnimation(){
+  function finishManualMessage(){
+    if(animation.autoTimer) clearTimeout(animation.autoTimer);
+    animation.autoTimer = null;
+    animation.autoRemaining = 0;
+    activeFlows().forEach(flow => animation.completed.add(flow.id));
+    if(animation.index >= animationGroups().length - 1) return completeAnimation();
+    animation.manualWaiting = true;
+    renderAll();
+  }
+
+  function reconcileProcessingPhase(){
+    if(processingPhaseEnabled() || !animation.running) return;
+    if(animation.phase === 'processing'){
+      if(animation.autoTimer) clearTimeout(animation.autoTimer);
+      animation.autoTimer = null;
+      animation.autoRemaining = 0;
+      animation.phase = 'arrived';
+      animation.token = Object.fromEntries(activeFlows().map(flow => [flow.id, connectionPath(flow, orderedFlows()).targetPoint]));
+      // Paused playback settles the message only after Resume, without another delay.
+      if(!animation.paused && state.settings.animationMode === 'auto') return nextPhase();
+    }
+    if(animation.phase === 'arrived' && state.settings.animationMode === 'step' && !animation.phaseInspection && !animation.paused && !animation.manualWaiting) finishManualMessage();
+  }
+
+  function currentMessageIndex(){
+    const groups = animationGroups();
+    const selected = groups.findIndex(group => group.flows.some(flow => flow.id === state.ui.selectedFlowId));
+    if(!animation.running && selected >= 0) return selected;
+    if(animation.index >= 0 && animation.index < groups.length) return animation.index;
+    return selected;
+  }
+
+  function previewMessage(index){
+    const groups = animationGroups();
+    if(!groups[index]) return;
+    resetFeedback();
+    if(animation.autoTimer) clearTimeout(animation.autoTimer);
+    if(activeAnimationFrame) cancelAnimationFrame(activeAnimationFrame);
+    animation.autoTimer = null; activeAnimationFrame = null;
+    removeMeasurePath();
+    animation.running = false; animation.paused = false;
+    animation.manualWaiting = false; animation.phaseInspection = false;
+    animation.phase = 'ready'; animation.index = index;
+    animation.pathCache = null; animation.token = {}; animation.completed = new Set();
+    clearSelection(); renderAll();
+  }
+
+  function jumpToMessage(index){
+    if(!animationGroups()[index]) return;
+    if(animation.running && !animation.paused) startAnimation(index);
+    else previewMessage(index);
+  }
+
+  function moveMessage(direction){
+    const index = currentMessageIndex();
+    if(state.settings.animationMode === 'step'){
+      if(direction < 0) return previewMessage(index - 1);
+      if(manualMessageBusy()) return;
+      const nextIndex = ['ready','stopped'].includes(animation.phase) ? Math.max(0,index) : index + 1;
+      if(animationGroups()[nextIndex]) startAnimation(nextIndex);
+      return;
+    }
+    jumpToMessage(index < 0 ? 0 : index + direction);
+  }
+
+  function manualMessageBusy(){
+    return state.settings.animationMode === 'step' && animation.running && !animation.manualWaiting
+      && (animation.paused || animation.phase === 'transfer' || !animation.phaseInspection);
+  }
+
+  function startAnimation(index=animation.phase === 'completed' ? 0 : currentMessageIndex(), phaseInspection=false){
     if(!validateFlow(false)) return;
+    const continuing = animation.manualWaiting && index === animation.index + 1;
+    resetFeedback();
     if(animation.autoTimer) clearTimeout(animation.autoTimer);
     animation.autoTimer = null;
     if(activeAnimationFrame) cancelAnimationFrame(activeAnimationFrame);
     activeAnimationFrame = null;
+    resetConnectionDraft(false);
     clearSelection();
     animation.running = true;
     animation.paused = false;
-    animation.index = 0;
+    animation.phaseInspection = phaseInspection;
+    animation.manualWaiting = false;
+    animation.index = clamp(index, 0, animationGroups().length-1);
     animation.phase = 'transfer';
-    animation.completed = new Set();
+    if(!continuing) animation.completed = new Set();
     animation.token = {};
     animation.elapsedBeforePause = 0;
     beginTransfer();
@@ -1588,9 +2006,13 @@
   }
 
   function stopAnimation(show=true){
+    resetFeedback();
     animation.running = false;
     animation.paused = false;
+    animation.phaseInspection = false;
+    animation.manualWaiting = false;
     animation.index = -1;
+    animation.completed = new Set();
     animation.phase = 'stopped';
     animation.token = {};
     animation.pathCache = null;
@@ -1605,6 +2027,7 @@
   }
 
   function beginTransfer(){
+    resetFeedback();
     if(activeAnimationFrame) cancelAnimationFrame(activeAnimationFrame);
     removeMeasurePath();
     const flows = activeFlows();
@@ -1615,12 +2038,15 @@
       const temp = svgEl('path', { d:data.d, fill:'none', stroke:'none', style:'opacity:0;pointer-events:none' });
       els.svg.appendChild(temp);
       const length = temp.getTotalLength ? temp.getTotalLength() : 1;
+      const start = temp.getPointAtLength(0);
       temp.remove();
-      return { flowId:flow.id, d:data.d, length, targetPoint:data.targetPoint };
+      return { flowId:flow.id, d:data.d, length, sourcePoint:{x:start.x,y:start.y}, targetPoint:data.targetPoint };
     });
     animation.pathCache = { paths };
+    animation.transferDuration = motion.transferDuration(durationForAnimationSpeed(state.settings.animationSpeed),paths.map(path=>path.length));
+    animation.transferProgress = 0;
     animation.phase = 'transfer';
-    animation.token = {};
+    animation.token = Object.fromEntries(paths.map(path => [path.flowId,path.sourcePoint]));
     animation.startTime = performance.now();
     animation.elapsedBeforePause = 0;
     animateTransfer();
@@ -1637,24 +2063,27 @@
       return { ...path, el:temp };
     });
     animation.measurePathEl = measures.map(m => m.el);
-    const duration = durationForAnimationSpeed(state.settings.animationSpeed);
+    const duration = animation.transferDuration;
     const tick = (now) => {
       if(!animation.running || animation.paused){ removeMeasurePath(); return; }
       const elapsed = animation.elapsedBeforePause + (now - animation.startTime);
       const t = clamp(elapsed / duration, 0, 1);
+      animation.transferProgress = t;
       const tokens = {};
       measures.forEach(m => {
-        const p = m.el.getPointAtLength(m.length * easeInOut(t));
+        const p = m.el.getPointAtLength(m.length * (reducedMotion.matches ? (t >= 1 ? 1 : 0) : motion.travelProgress(t)));
         tokens[m.flowId] = { x:p.x, y:p.y };
       });
       animation.token = tokens;
-      renderCanvas();
+      renderCanvas(); renderPlaybackProgress();
       if(t >= 1){
         removeMeasurePath();
         animation.phase = 'arrived';
+        startPhaseFeedback('arrived',430);
         animation.token = Object.fromEntries(paths.map(path => [path.flowId, path.targetPoint]));
         renderAll();
-        if(state.settings.animationMode === 'auto') scheduleAutoNext(650);
+        activeAnimationFrame = null;
+        scheduleAutoNext(650);
         return;
       }
       activeAnimationFrame = requestAnimationFrame(tick);
@@ -1662,32 +2091,42 @@
     activeAnimationFrame = requestAnimationFrame(tick);
   }
 
-  function easeInOut(t){ return t < .5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2; }
-
   function scheduleAutoNext(delay=700){
     if(animation.autoTimer) clearTimeout(animation.autoTimer);
     animation.autoTimer = null;
-    if(state.settings.animationMode !== 'auto' || !animation.running) return;
+    animation.autoRemaining = delay;
+    animation.autoDeadline = performance.now() + delay;
+    if(!animation.running || animation.paused || animation.manualWaiting || (state.settings.animationMode !== 'auto' && animation.phaseInspection)) return;
+    if(state.settings.animationMode === 'step' && animation.phase === 'arrived' && !processingPhaseEnabled()) return finishManualMessage();
     animation.autoTimer = setTimeout(() => {
       animation.autoTimer = null;
-      if(state.settings.animationMode === 'auto' && animation.running) nextPhase();
+      if(animation.running && !animation.paused){
+        if(state.settings.animationMode === 'step' && animation.phase === 'processing') return finishManualMessage();
+        if(animation.phase === 'completed'){
+          if(state.settings.animationMode === 'auto' && state.settings.loopAnimation !== false) startAnimation();
+          else completeAnimation();
+        }
+        else nextPhase();
+      }
     }, delay);
   }
 
   function nextPhase(){
-    if(!animation.running) return startAnimation();
+    if(animation.paused) return;
+    if(!animation.running) return startAnimation(undefined, animation.phaseInspection);
     const groups = animationGroups();
     const flows = activeFlows();
     if(!flows.length) return completeAnimation();
     if(animation.phase === 'transfer') return;
-    if(animation.phase === 'arrived'){
+    if(animation.phase === 'arrived' && processingPhaseEnabled()){
       animation.phase = 'processing';
+      startPhaseFeedback('processing',900);
       animation.token = {};
       renderAll();
-      if(state.settings.animationMode === 'auto') scheduleAutoNext(900);
+      scheduleAutoNext(900);
       return;
     }
-    if(animation.phase === 'processing'){
+    if(animation.phase === 'processing' || animation.phase === 'arrived'){
       flows.forEach(flow => animation.completed.add(flow.id));
       animation.index++;
       if(animation.index >= groups.length) return completeAnimation();
@@ -1698,59 +2137,90 @@
   }
 
   function prevPhase(){
+    if(animation.paused) return;
     if(!animation.running) return;
+    resetFeedback();
     if(animation.phase === 'processing'){
       animation.phase = 'arrived';
       animation.token = Object.fromEntries(activeFlows().map(flow => [flow.id, connectionPath(flow, orderedFlows()).targetPoint]));
     }else if(animation.phase === 'arrived'){
       animation.phase = 'transfer';
       beginTransfer();
+      renderAll();
       return;
     }else if(animation.phase === 'transfer' && animation.index > 0){
+      if(activeAnimationFrame) cancelAnimationFrame(activeAnimationFrame);
+      activeAnimationFrame = null;
+      removeMeasurePath();
+      animation.pathCache = null;
       const groups = animationGroups();
       animation.index--;
       (groups[animation.index]?.flows || []).forEach(flow => animation.completed.delete(flow.id));
-      animation.phase = 'processing';
-      animation.token = {};
+      animation.phase = processingPhaseEnabled() ? 'processing' : 'arrived';
+      animation.token = processingPhaseEnabled() ? {} : Object.fromEntries(activeFlows().map(flow => [flow.id, connectionPath(flow, orderedFlows()).targetPoint]));
     }
     renderAll();
   }
 
+  function inspectPhase(direction){
+    if(state.settings.animationMode === 'auto' || animation.paused) return;
+    if(direction > 0 && animation.phase === 'transfer') return;
+    if(animation.autoTimer) clearTimeout(animation.autoTimer);
+    animation.autoTimer = null;
+    animation.phaseInspection = true;
+    animation.manualWaiting = false;
+    if(direction > 0) nextPhase();
+    else prevPhase();
+    renderToolbarState();
+  }
+
   function completeAnimation(){
     removeMeasurePath();
-    const loopAuto = state.settings.animationMode === 'auto' && animation.running;
+    animation.manualWaiting = false;
+    animation.index = Math.max(0,animationGroups().length-1);
+    const loopAuto = state.settings.animationMode === 'auto' && animation.running && state.settings.loopAnimation !== false;
     animation.phase = 'completed';
     animation.token = {};
     if(loopAuto){
       animation.completed = new Set(orderedFlows().map(f => f.id));
       renderAll();
-      if(animation.autoTimer) clearTimeout(animation.autoTimer);
-      animation.autoTimer = setTimeout(() => {
-        animation.autoTimer = null;
-        if(state.settings.animationMode === 'auto' && animation.phase === 'completed') startAnimation();
-      }, 900);
+      scheduleAutoNext(900);
       return;
     }
     animation.running = false;
-    animation.index = -1;
     renderAll();
     showToast('Animation completed');
   }
 
   function pauseResume(){
+    if(animation.manualWaiting) return moveMessage(1);
     if(!animation.running) return startAnimation();
     if(animation.paused){
       animation.paused = false;
+      runPhaseFeedback();
       animation.startTime = performance.now();
       if(animation.phase === 'transfer') animateTransfer();
+      else scheduleAutoNext(animation.autoRemaining || 0);
       showToast('Animation resumed');
     }else{
       animation.paused = true;
-      animation.elapsedBeforePause += performance.now() - animation.startTime;
+      if(feedback.frame){
+        cancelAnimationFrame(feedback.frame); feedback.frame = null;
+        feedback.elapsed = Math.min(feedback.duration,performance.now()-feedback.started);
+      }
+      if(animation.phase === 'transfer') animation.elapsedBeforePause += performance.now() - animation.startTime;
+      if(animation.autoTimer){
+        animation.autoRemaining = Math.max(0, animation.autoDeadline - performance.now());
+        clearTimeout(animation.autoTimer);
+        animation.autoTimer = null;
+      }
       if(activeAnimationFrame) cancelAnimationFrame(activeAnimationFrame);
       removeMeasurePath();
       showToast('Animation paused');
     }
+    renderToolbarState();
+    renderImagePanels();
+    renderPlaybackProgress();
     updateStatus();
   }
 
@@ -1758,19 +2228,22 @@
     if(!state.components.length) return resetZoom();
     const bounds = diagramBounds();
     const rect = els.svg.getBoundingClientRect();
-    const padding = 70;
+    const padding = state.ui.presentationMode ? 40 : 70;
+    const topSpace = state.ui.presentationMode ? 150 : 0;
+    const bottomSpace = state.ui.presentationMode ? 100 : 0;
     const zx = (rect.width - padding*2) / bounds.width;
-    const zy = (rect.height - padding*2) / bounds.height;
+    const zy = (rect.height - padding*2 - topSpace - bottomSpace) / bounds.height;
     const z = clamp(Math.min(zx, zy), MIN_ZOOM, MAX_ZOOM);
     state.settings.zoom = z;
     state.settings.panX = rect.width/2 - (bounds.x + bounds.width/2) * z;
-    state.settings.panY = rect.height/2 - (bounds.y + bounds.height/2) * z;
+    state.settings.panY = topSpace + (rect.height-topSpace-bottomSpace)/2 - (bounds.y + bounds.height/2) * z;
     saveLocal(true);
     renderAll();
   }
 
   function diagramBounds(){
     const boxes = state.components.map(c => ({ x:c.x, y:c.y, x2:c.x+c.width, y2:c.y+c.height }));
+    if(!state.ui.presentationMode) labelPlacements.forEach(b => boxes.push({x:b.x,y:b.y,x2:b.x+b.width,y2:b.y+b.height}));
     if(!boxes.length) return {x:0,y:0,width:100,height:100};
     const x = Math.min(...boxes.map(b => b.x));
     const y = Math.min(...boxes.map(b => b.y));
@@ -1819,10 +2292,13 @@
 
   async function loadDiagramFromText(text, sourceName='diagram'){
     try{
-      const data = JSON.parse(text);
-      validateImported(data, true);
-      state = mergeDefaults(data);
-      state.settings.diagramFileName = normalizedJsonFileName(sourceName || state.settings.diagramFileName);
+      const candidate = mergeDefaults(documents.normalizeDiagram(JSON.parse(text)));
+      candidate.settings.diagramFileName = normalizedJsonFileName(sourceName || candidate.settings.diagramFileName);
+      stopAnimation(false);
+      resetConnectionDraft(false);
+      sidebarTab = 'flow';
+      state = candidate;
+      currentFileName = candidate.settings.diagramFileName;
       clearSelection();
       pushHistory('open/import');
       renderAll();
@@ -1846,60 +2322,35 @@
     reader.readAsText(file);
   }
 
-  function validateImported(data, strict){
-    if(!data || typeof data !== 'object') throw new Error('JSON root must be an object.');
-    if(!Array.isArray(data.components)) throw new Error('Missing components array.');
-    if(!Array.isArray(data.messageFlows)) throw new Error('Missing messageFlows array.');
-    if(strict){
-      const ids = new Set(data.components.map(c => c.id));
-      data.components.forEach(c => {
-        if(!c.id || typeof c.x !== 'number' || typeof c.y !== 'number') throw new Error('Invalid component structure.');
+  function exportSnapshot(){
+    const exportDoc=snapshot(),flows=orderedFlows(),host=svgEl('svg',{width:1,height:1,'aria-hidden':'true'});
+    host.style.cssText='position:fixed;left:-10000px;top:0;pointer-events:none';
+    // Capture portable geometry synchronously, without changing state or the live SVG.
+    document.body.appendChild(host);
+    try{
+      const components=[...state.components].sort((a,b)=>Number(elements.attached(a.shape))-Number(elements.attached(b.shape)) || (a.zIndex||0)-(b.zIndex||0)).map(c=>{
+        const group=svgEl('g',{});group.append(componentShapeEl(c),componentTextEl(c));host.appendChild(group);
+        const b=group.getBBox(),clone=globalThis.MessageFlowImageExport.styledClone(group);
+        clone.setAttribute('class','componentGroup');
+        group.remove();
+        return {...JSON.parse(JSON.stringify(c)),markup:new XMLSerializer().serializeToString(clone),bounds:{x:b.x,y:b.y,width:b.width,height:b.height}};
       });
-      data.messageFlows.forEach(f => {
-        if(!f.id || !ids.has(f.sourceComponentId) || !ids.has(f.targetComponentId)) throw new Error('A message flow references a missing component.');
+      const paths=flows.map(flow=>{
+        const path=connectionPath(flow,flows),measure=svgEl('path',{d:path.d});host.appendChild(measure);
+        const b=measure.getBBox(),length=measure.getTotalLength();measure.remove();
+        return {...JSON.parse(JSON.stringify(flow)),...path,length,bounds:{x:b.x,y:b.y,width:b.width,height:b.height}};
       });
-    }
-    return true;
+      const rect=els.svg.getBoundingClientRect();
+      return {components,flows:paths,settings:exportDoc.settings,presentation:state.ui.presentationMode,selectedIndex:Math.max(0,currentMessageIndex()),
+        name:(currentFileName || 'Message flow').replace(/\.json$/i,''),
+        viewport:{x:-state.settings.panX/state.settings.zoom,y:-state.settings.panY/state.settings.zoom,width:rect.width/state.settings.zoom,height:rect.height/state.settings.zoom}};
+    }finally{host.remove();}
   }
 
-  function exportSvg(){
-    const clone = els.svg.cloneNode(true);
-    clone.querySelectorAll('.resizeHandle,.selectionBox').forEach(n => n.remove());
-    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    clone.setAttribute('width', els.svg.clientWidth);
-    clone.setAttribute('height', els.svg.clientHeight);
-    const css = document.querySelector('style').textContent;
-    const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-    style.textContent = css;
-    clone.insertBefore(style, clone.firstChild);
-    downloadBlob(new XMLSerializer().serializeToString(clone), 'event-flow-designer.svg', 'image/svg+xml');
-  }
-
-  function exportPng(){
-    const clone = els.svg.cloneNode(true);
-    clone.querySelectorAll('.resizeHandle,.selectionBox').forEach(n => n.remove());
-    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    const css = document.querySelector('style').textContent;
-    const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-    style.textContent = css;
-    clone.insertBefore(style, clone.firstChild);
-    const svgText = new XMLSerializer().serializeToString(clone);
-    const blob = new Blob([svgText], {type:'image/svg+xml;charset=utf-8'});
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = els.svg.clientWidth * 2;
-      canvas.height = els.svg.clientHeight * 2;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.scale(2,2);
-      ctx.drawImage(img,0,0);
-      URL.revokeObjectURL(url);
-      canvas.toBlob(png => downloadBlob(png, 'event-flow-designer.png', 'image/png'));
-    };
-    img.onerror = () => showToast('PNG export failed');
-    img.src = url;
+  function openExport(){
+    if(inlineEditor)closeInlineEditor(true);
+    $('fileMenu').open=false;$('playbackOptions').open=false;
+    exportDialog.open(exportSnapshot());
   }
 
   function downloadBlob(content, filename, type){
@@ -1923,81 +2374,13 @@
   }
 
   function resetConnectionDraft(keepConnectMode=false){
+    lastComponentClick = null;
+    placement = null;
     connectSourceId = null;
     connectSourcePortId = null;
     connectChosenStyle = null;
     connectPreviewPoint = null;
-    hideConnectionChoiceOverlay();
     if(!keepConnectMode) state.settings.activeCanvasMode = 'select';
-  }
-
-  function ensureConnectionChoiceOverlay(){
-    if(connectionChoiceOverlay) return connectionChoiceOverlay;
-    connectionChoiceOverlay = document.createElement('div');
-    connectionChoiceOverlay.className = 'connectionChoiceOverlay';
-    connectionChoiceOverlay.setAttribute('role', 'dialog');
-    connectionChoiceOverlay.setAttribute('aria-label', 'Choose arrow shape');
-    connectionChoiceOverlay.addEventListener('pointerdown', e => e.stopPropagation());
-    connectionChoiceOverlay.addEventListener('click', onConnectionChoiceClick);
-    els.canvasWrap.appendChild(connectionChoiceOverlay);
-    return connectionChoiceOverlay;
-  }
-
-  function showConnectionChoiceOverlay(){
-    const source = findComponent(connectSourceId);
-    if(!source) return hideConnectionChoiceOverlay();
-    const selected = connectChosenStyle || '';
-    const overlay = ensureConnectionChoiceOverlay();
-    overlay.innerHTML = `
-      <div class="connectionChoiceTitle">Choose arrow shape</div>
-      <div class="connectionChoiceHint">Source: ${escapeHtml(source.name || 'Component')} ${connectSourcePortId ? '· ' + escapeHtml(portLabel(connectSourcePortId, source)) : ''}</div>
-      <div class="connectionChoiceButtons">
-        <button type="button" data-connection-choice="straight" class="${selected === 'straight' ? 'active' : ''}" title="Straight arrow"><span class="arrowIcon">→</span><span>Straight</span></button>
-        <button type="button" data-connection-choice="arc" class="${selected === 'arc' ? 'active' : ''}" title="Curved arrow"><span class="arrowIcon">⤴</span><span>Curved</span></button>
-        <button type="button" data-connection-choice="angular" class="${selected === 'angular' ? 'active' : ''}" title="Elbow arrow"><span class="arrowIcon">┐</span><span>Elbow</span></button>
-      </div>
-      <div class="connectionChoiceHint">After choosing, click a target port or target component.</div>
-      <div class="connectionChoiceActions"><button type="button" data-connection-cancel="true">Cancel</button></div>`;
-    overlay.classList.add('open');
-    updateConnectionChoiceOverlayPosition();
-  }
-
-  function hideConnectionChoiceOverlay(){
-    if(connectionChoiceOverlay) connectionChoiceOverlay.classList.remove('open');
-  }
-
-  function updateConnectionChoiceOverlayPosition(){
-    if(!connectionChoiceOverlay || !connectionChoiceOverlay.classList.contains('open')) return;
-    const source = findComponent(connectSourceId);
-    if(!source) return hideConnectionChoiceOverlay();
-    const anchor = connectSourcePortId ? portPosition(source, connectSourcePortId) : center(source);
-    const screen = worldToScreen(anchor);
-    const wrap = els.canvasWrap.getBoundingClientRect();
-    const width = connectionChoiceOverlay.offsetWidth || 250;
-    const height = connectionChoiceOverlay.offsetHeight || 140;
-    const left = clamp(screen.x - wrap.left + 14, 8, Math.max(8, wrap.width - width - 8));
-    const top = clamp(screen.y - wrap.top - 26, 8, Math.max(8, wrap.height - height - 8));
-    connectionChoiceOverlay.style.left = `${left}px`;
-    connectionChoiceOverlay.style.top = `${top}px`;
-  }
-
-  function onConnectionChoiceClick(e){
-    const cancel = e.target.closest('[data-connection-cancel]');
-    if(cancel){
-      resetConnectionDraft(true);
-      showToast('Connection cancelled');
-      renderAll();
-      return;
-    }
-    const btn = e.target.closest('[data-connection-choice]');
-    if(!btn) return;
-    connectChosenStyle = btn.dataset.connectionChoice;
-    const source = findComponent(connectSourceId);
-    connectPreviewPoint = source ? defaultConnectionPreviewPoint(source, connectSourcePortId) : screenToWorld(e);
-    hideConnectionChoiceOverlay();
-    showToast(`${connectionStyleName(connectChosenStyle)} selected. Now click a target port or target component.`);
-    updateStatus();
-    renderCanvas();
   }
 
   function openInlineEditor(value, worldBox, onCommit, multiline=true){
@@ -2031,23 +2414,14 @@
     editor.remove();
   }
 
-  function wrapText(text, maxChars){
-    const words = String(text || '').split(/\s+/);
-    const lines = [];
-    let line = '';
-    for(const word of words){
-      if((line + ' ' + word).trim().length > maxChars && line){ lines.push(line); line = word; }
-      else line = (line + ' ' + word).trim();
-    }
-    if(line) lines.push(line);
-    return lines.length ? lines : [''];
-  }
-
   function loadExample(){
     if(state.components.length || state.messageFlows.length){
       if(!confirm('Replace current diagram with the example?')) return;
     }
+    resetConnectionDraft(false);
+    sidebarTab = 'flow';
     state = defaultState();
+    state.settings.diagramFileName = 'Order flow example.json';
     currentFileName = state.settings.diagramFileName || 'event-flow-designer.json';
     const exampleProcessingImage = (title, subtitle, icon, color) => {
       const escapeXml = value => String(value || '')
@@ -2224,6 +2598,7 @@
   function uploadImageForFlow(flowId){
     const flow = findFlow(flowId);
     if(!flow) return;
+    const session = flowEditorOriginalAll;
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp';
@@ -2233,6 +2608,7 @@
       if(!/^image\/(png|jpeg|jpg|gif|svg\+xml|webp)$/.test(file.type)) return showToast('Unsupported image format');
       const reader = new FileReader();
       reader.onload = () => {
+        if(session !== flowEditorOriginalAll || findFlow(flowId) !== flow) return;
         flow.processingImageDataUrl = reader.result;
         pushHistory('upload image');
         renderAll();
@@ -2244,18 +2620,18 @@
   }
 
   function startConnectionFromSource(componentId, portId){
+    lastComponentClick = null;
     const component = findComponent(componentId);
     if(!component || state.ui.presentationMode) return false;
     connectSourceId = componentId;
     connectSourcePortId = portId || nearestPortId(component, center(component));
-    connectChosenStyle = null;
-    connectPreviewPoint = null;
-    state.settings.activeCanvasMode = 'select';
+    placement = null;
+    connectChosenStyle = state.settings.defaultConnectionStyle || 'arc';
+    connectPreviewPoint = portPosition(component, connectSourcePortId);
+    state.settings.activeCanvasMode = 'connect';
     state.ui.selectedComponentIds = [componentId];
     state.ui.selectedFlowId = null;
     renderAll();
-    showConnectionChoiceOverlay();
-    showToast('Choose an arrow shape, then click a target port or target component.');
     return true;
   }
 
@@ -2284,6 +2660,26 @@
       els.svg.setPointerCapture(e.pointerId);
       renderAll();
       return;
+    }
+
+    if(state.ui.presentationMode) return;
+    if(placement){
+      e.preventDefault();
+      commitPlacement(world);
+      return;
+    }
+
+    const label = target.closest?.('.flowLabelGroup');
+    if(label){
+      const flow = findFlow(label.dataset.id), box = labelPlacements.get(label.dataset.id);
+      if(!flow || !box) return;
+      const path = connectionPath(flow);
+      selectFlow(flow.id);
+      drag = {type:'label', flowId:flow.id, startWorld:world, startClientX:e.clientX, startClientY:e.clientY,
+        original:flow.labelOffset ? {...flow.labelOffset} : null,
+        origin:{x:box.x+box.width/2-path.labelX,y:box.y+box.height/2-path.labelY}, moved:false};
+      els.svg.setPointerCapture(e.pointerId);
+      e.preventDefault(); renderAll(); return;
     }
 
     const bendHandle = target.closest?.('.flowBendHandle');
@@ -2324,7 +2720,14 @@
     }
 
     const clickedPort = portFromTarget(target);
-    if(clickedPort && handleConnectionPortClick(clickedPort)){
+    if(clickedPort){
+      if(connectSourceId) handleConnectionPortClick(clickedPort);
+      else {
+        startConnectionFromSource(clickedPort.componentId, clickedPort.portId);
+        drag = {type:'connection', startClientX:e.clientX, startClientY:e.clientY, moved:false};
+        els.svg.setPointerCapture(e.pointerId);
+      }
+      e.preventDefault();
       e.stopPropagation();
       return;
     }
@@ -2370,44 +2773,16 @@
 
     const cid = componentIdFromTarget(target);
     if(cid){
+      sidebarTab = 'properties';
       const ctrlDragCopy = (e.ctrlKey || e.metaKey) && !e.shiftKey;
       if(ctrlDragCopy){
         const baseIds = isSelectedComponent(cid) ? [...state.ui.selectedComponentIds] : [cid];
-        const selected = state.components.filter(c => baseIds.includes(c.id));
-        const idMap = new Map();
-        const copies = selected.map(c => {
-          const copy = JSON.parse(JSON.stringify(c));
-          copy.id = id('cmp');
-          copy.zIndex = nextZ() + idMap.size;
-          idMap.set(c.id, copy.id);
-          return copy;
-        });
-        const flowCopies = state.messageFlows.filter(f => idMap.has(f.sourceComponentId) && idMap.has(f.targetComponentId)).map(f => ({
-          ...JSON.parse(JSON.stringify(f)),
-          id:id('flow'),
-          sourceComponentId:idMap.get(f.sourceComponentId),
-          targetComponentId:idMap.get(f.targetComponentId),
-          sequenceNumber:state.messageFlows.length + 1
-        }));
-        state.components.push(...copies);
-        state.messageFlows.push(...flowCopies);
-        state.ui.selectedComponentIds = copies.map(c => c.id);
-        state.ui.selectedFlowId = null;
-        const selectedOriginals = expandMoveOriginalsForPackages(copies.map(c => JSON.parse(JSON.stringify(c))));
+        // A modifier click toggles selection; only crossing the drag threshold copies.
         drag = {
-          type:'move',
-          startWorld:world,
-          originals:selectedOriginals,
-          flowControlOriginals:flowControlOriginalsForComponentMove(selectedOriginals),
-          copyDrag:true,
-          copiedComponentIds:copies.map(c => c.id),
-          copiedFlowIds:flowCopies.map(f => f.id),
-          clickCandidate:false,
-          moved:false,
-          startClientX:e.clientX,
-          startClientY:e.clientY,
-          clickComponentId:null,
-          clickPortId:null
+          type:'move', startWorld:world, originals:[], pendingCopyIds:baseIds,
+          previousSelection:[...state.ui.selectedComponentIds], previousFlow:state.ui.selectedFlowId,
+          modifiedClick:true, clickComponentId:cid, moved:false,
+          startClientX:e.clientX, startClientY:e.clientY
         };
         els.svg.setPointerCapture(e.pointerId);
         renderAll();
@@ -2415,41 +2790,78 @@
       }
       if(!isSelectedComponent(cid)) selectComponent(cid, e.shiftKey || e.ctrlKey || e.metaKey);
       else if(e.shiftKey || e.ctrlKey || e.metaKey) selectComponent(cid, true);
-      const clickedComponent = findComponent(cid);
       const selectedOriginals = expandMoveOriginalsForPackages(state.components.filter(c => state.ui.selectedComponentIds.includes(c.id)).map(c => JSON.parse(JSON.stringify(c))));
       drag = {
         type:'move',
         startWorld:world,
         originals:selectedOriginals,
         flowControlOriginals:flowControlOriginalsForComponentMove(selectedOriginals),
-        clickCandidate:!(e.shiftKey || e.ctrlKey || e.metaKey),
+        clickComponentId:cid,
+        modifiedClick:e.shiftKey || e.ctrlKey || e.metaKey,
         moved:false,
         startClientX:e.clientX,
-        startClientY:e.clientY,
-        clickComponentId:cid,
-        clickPortId:clickedComponent ? centeredPortIdFromPoint(clickedComponent, world) : null
+        startClientY:e.clientY
       };
       els.svg.setPointerCapture(e.pointerId);
       renderAll();
       return;
     }
 
-    if(connectionChoiceOverlay && connectionChoiceOverlay.classList.contains('open')){
-      resetConnectionDraft();
-    }
     clearSelection();
     drag = { type:'selectBox', startWorld:world, currentWorld:world };
     els.svg.setPointerCapture(e.pointerId);
     renderAll();
   }
 
+  function beginComponentCopyDrag(){
+    const copyIds = elements.descendants(drag.pendingCopyIds,state.components,true);
+    const idMap = new Map();
+    const copies = state.components.filter(c => copyIds.has(c.id)).map(c => {
+      const copy = JSON.parse(JSON.stringify(c));
+      copy.id = id('cmp'); copy.zIndex = nextZ() + idMap.size;
+      idMap.set(c.id,copy.id);
+      return copy;
+    });
+    const flowCopies = orderedFlows().filter(f => idMap.has(f.sourceComponentId) && idMap.has(f.targetComponentId)).map(f => ({
+      ...JSON.parse(JSON.stringify(f)), id:id('flow'),
+      sourceComponentId:idMap.get(f.sourceComponentId), targetComponentId:idMap.get(f.targetComponentId)
+    }));
+    remapAttachments(copies,idMap);
+    const existingFlows = orderedFlows();
+    state.components.push(...copies);
+    state.messageFlows.push(...flowCopies);
+    renumberFlows([...existingFlows,...flowCopies]);
+    state.ui.selectedComponentIds = copies.map(c => c.id);
+    state.ui.selectedFlowId = null;
+    drag.originals = JSON.parse(JSON.stringify(copies));
+    drag.flowControlOriginals = flowControlOriginalsForComponentMove(drag.originals);
+    drag.copyDrag = true;
+    drag.copiedComponentIds = copies.map(c => c.id);
+    drag.copiedFlowIds = flowCopies.map(f => f.id);
+    delete drag.pendingCopyIds;
+  }
+
   function onSvgPointerMove(e){
     const world = screenToWorld(e);
+    if(placement && !drag){
+      placement.point = world;
+      renderPlacementPreview();
+      return;
+    }
     if(!drag){
       if(connectSourceId && connectChosenStyle){
         connectPreviewPoint = world;
-        renderCanvas();
+        els.overlayLayer.querySelectorAll('.connectionDraftPreview,.connectionDraftDot').forEach(node => node.remove());
+        renderConnectionDraftPreview();
         updateStatus();
+      }
+      return;
+    }
+    if(drag.type === 'label'){
+      if(Math.hypot(e.clientX-drag.startClientX,e.clientY-drag.startClientY) > 4) drag.moved = true;
+      if(drag.moved){
+        findFlow(drag.flowId).labelOffset = {x:drag.origin.x + world.x-drag.startWorld.x,y:drag.origin.y + world.y-drag.startWorld.y};
+        renderCanvas();
       }
       return;
     }
@@ -2457,6 +2869,14 @@
       state.settings.panX = drag.panX + (e.clientX - drag.startX);
       state.settings.panY = drag.panY + (e.clientY - drag.startY);
       renderAll();
+      return;
+    }
+    if(drag.type === 'connection'){
+      if(Math.hypot(e.clientX - drag.startClientX, e.clientY - drag.startClientY) > 4) drag.moved = true;
+      const drop = resolveComponentPortFromPointer(e);
+      connectPreviewPoint = drop ? portPosition(findComponent(drop.componentId), drop.portId) : world;
+      els.overlayLayer.querySelectorAll('.connectionDraftPreview,.connectionDraftDot').forEach(node => node.remove());
+      renderConnectionDraftPreview();
       return;
     }
     if(drag.type === 'endpoint'){
@@ -2478,9 +2898,18 @@
     if(drag.type === 'move'){
       const dx = world.x - drag.startWorld.x, dy = world.y - drag.startWorld.y;
       if(Math.hypot(e.clientX - drag.startClientX, e.clientY - drag.startClientY) > 4) drag.moved = true;
+      if(!drag.moved) return;
+      if(drag.pendingCopyIds) beginComponentCopyDrag();
       drag.originals.forEach(orig => {
         const c = findComponent(orig.id);
-        if(c){ c.x = snap(orig.x + dx); c.y = snap(orig.y + dy); }
+        if(c){
+          if(elements.attached(c.shape)){
+            if(!drag.originals.some(o=>o.id===c.ownerId)){
+              const a=elements.boundary(findComponent(c.ownerId),{x:orig.x+orig.width/2+dx,y:orig.y+orig.height/2+dy});
+              c.attachment={side:a.side,ratio:a.ratio};
+            }
+          }else{c.x=snap(orig.x+dx);c.y=snap(orig.y+dy);}
+        }
       });
       (drag.flowControlOriginals || []).forEach(orig => {
         const flow = findFlow(orig.id);
@@ -2500,7 +2929,7 @@
       if(drag.handle.includes('s')) h = o.height + dy;
       if(drag.handle.includes('w')) { x = o.x + dx; w = o.width - dx; }
       if(drag.handle.includes('n')) { y = o.y + dy; h = o.height - dy; }
-      c.x = snap(x); c.y = snap(y); c.width = Math.max(60, snap(w)); c.height = Math.max(44, snap(h));
+      c.x = snap(x); c.y = snap(y); c.width = Math.max(c.shape.startsWith('uml')?130:60, snap(w)); c.height = Math.max(c.shape.startsWith('uml')?80:44, snap(h));
       renderCanvas();
       return;
     }
@@ -2510,27 +2939,81 @@
     }
   }
 
+  function cancelGeometryDrag(){
+    const cancelled=drag;
+    if(!cancelled || !['move','resize'].includes(cancelled.type)) return false;
+    drag=null;
+    if(cancelled.copyDrag){
+      const ids=new Set(cancelled.copiedComponentIds);
+      state.components=state.components.filter(c=>!ids.has(c.id));
+      state.messageFlows=state.messageFlows.filter(f=>!cancelled.copiedFlowIds.includes(f.id));
+      state.ui.selectedComponentIds = cancelled.previousSelection;
+      state.ui.selectedFlowId = cancelled.previousFlow;
+    }else{
+      for(const original of cancelled.originals || [cancelled.original]){
+        const c=findComponent(original.id);if(c)Object.assign(c,original);
+      }
+      for(const original of cancelled.flowControlOriginals || []){
+        const f=findFlow(original.id);if(f)f.controlPoint={...original.controlPoint};
+      }
+    }
+    saveLocal(true);renderAll();return true;
+  }
+
   function onSvgPointerUp(e){
     if(!drag) return;
+    if(e.type === 'pointercancel' && cancelGeometryDrag()) return;
     const finishedDrag = drag;
-
-    if(finishedDrag.type === 'move'){
-      const openConnectionOverlay = finishedDrag.clickCandidate && !finishedDrag.moved && finishedDrag.clickComponentId && !state.ui.presentationMode;
+    if(finishedDrag.type === 'label'){
       drag = null;
       try{ els.svg.releasePointerCapture(e.pointerId); }catch{}
-      if(finishedDrag.copyDrag && !finishedDrag.moved){
-        const copiedComponents = new Set(finishedDrag.copiedComponentIds || []);
-        const copiedFlows = new Set(finishedDrag.copiedFlowIds || []);
-        state.components = state.components.filter(c => !copiedComponents.has(c.id));
-        state.messageFlows = state.messageFlows.filter(f => !copiedFlows.has(f.id));
-        clearSelection();
+      if(e.type === 'pointercancel'){
+        if(finishedDrag.original) findFlow(finishedDrag.flowId).labelOffset = finishedDrag.original;
+        else delete findFlow(finishedDrag.flowId).labelOffset;
+        saveLocal(true);
+      }else if(finishedDrag.moved){
+        pushHistory('move label'); lastLabelClick = null;
+      }else{
+        const doubleClick = lastLabelClick?.id === finishedDrag.flowId && e.timeStamp-lastLabelClick.time < 450;
+        lastLabelClick = {id:finishedDrag.flowId,time:e.timeStamp};
+        if(doubleClick){ lastLabelClick = null; renameFlow(finishedDrag.flowId); return; }
+      }
+      renderAll(); focusFlowLabel(finishedDrag.flowId); return;
+    }
+    if(finishedDrag.type === 'connection'){
+      drag = null;
+      try{ els.svg.releasePointerCapture(e.pointerId); }catch{}
+      if(e.type === 'pointercancel') resetConnectionDraft(false);
+      else if(finishedDrag.moved){
+        const drop = resolveComponentPortFromPointer(e);
+        if(drop) addFlow(connectSourceId, drop.componentId, connectSourcePortId, drop.portId, connectChosenStyle);
+        else resetConnectionDraft(false);
+      }
+      renderAll();
+      return;
+    }
+
+    if(finishedDrag.type === 'move'){
+      drag = null;
+      try{ els.svg.releasePointerCapture(e.pointerId); }catch{}
+      if(finishedDrag.pendingCopyIds){
+        selectComponent(finishedDrag.clickComponentId, true);
+        lastComponentClick = null;
         renderAll();
         return;
       }
-      if(openConnectionOverlay){
-        startConnectionFromSource(finishedDrag.clickComponentId, finishedDrag.clickPortId);
-        return;
-      }
+      if(!finishedDrag.moved && finishedDrag.clickComponentId && !finishedDrag.modifiedClick){
+        selectComponent(finishedDrag.clickComponentId, false);
+        const doubleClick = lastComponentClick?.id === finishedDrag.clickComponentId
+          && e.timeStamp - lastComponentClick.time < 450
+          && Math.hypot(e.clientX - lastComponentClick.x, e.clientY - lastComponentClick.y) < 5;
+        lastComponentClick = {id:finishedDrag.clickComponentId, time:e.timeStamp, x:e.clientX, y:e.clientY};
+        if(doubleClick){
+          lastComponentClick = null;
+          renameComponent(finishedDrag.clickComponentId);
+          return;
+        }
+      }else lastComponentClick = null;
       if(finishedDrag.moved) pushHistory(finishedDrag.copyDrag ? 'copy by ctrl-drag' : 'move');
       renderAll();
       return;
@@ -2553,13 +3036,13 @@
       return;
     }
 
+    drag = null;
     if(finishedDrag.type === 'resize'){
       pushHistory('resize');
     }else if(finishedDrag.type === 'pan'){
       saveLocal(true);
     }else if(finishedDrag.type === 'selectBox'){
       selectByBox(finishedDrag.startWorld, finishedDrag.currentWorld);
-      pushHistory('select');
     }
     drag = null;
     try{ els.svg.releasePointerCapture(e.pointerId); }catch{}
@@ -2614,31 +3097,54 @@
     return target.closest?.('.componentGroup')?.dataset.id || target.dataset?.id && findComponent(target.dataset.id)?.id;
   }
   function flowIdFromTarget(target){
-    return target.closest?.('.flowPath,.flowLabel')?.dataset.id || target.dataset?.id && findFlow(target.dataset.id)?.id;
+    return target.closest?.('.flowPath,.flowLabel,.flowLabelGroup')?.dataset.id || target.dataset?.id && findFlow(target.dataset.id)?.id;
+  }
+
+  function renameComponent(cid){
+    const c = findComponent(cid);
+    if(!c) return;
+    selectComponent(cid,false);
+    openInlineEditor(c.name, { x:c.x+10, y:c.y+c.height/2-18, width:c.width-20, height:38 }, (value) => {
+      c.name = value.trim() || c.name;
+      pushHistory('rename component'); renderAll();
+    }, false);
+    renderAll();
+  }
+
+  function focusFlowLabel(flowId){
+    Array.from(els.labelsLayer.querySelectorAll('.flowLabelGroup')).find(label => label.dataset.id === flowId)?.focus({preventScroll:true});
+  }
+
+  function renameFlow(flowId){
+    const f = findFlow(flowId), box = labelPlacements.get(flowId);
+    if(!f || !box) return;
+    selectFlow(flowId);
+    openInlineEditor(f.messageText, box, value => {
+      f.messageText = value.trim() || f.messageText;
+      pushHistory('rename message'); renderAll();
+    }, false);
+  }
+
+  function resetLabel(flowId){
+    const flow = findFlow(flowId);
+    if(!flow?.labelOffset) return;
+    delete flow.labelOffset;
+    pushHistory('reset label position'); renderAll();
   }
 
   function onSvgDblClick(e){
-    const cid = componentIdFromTarget(e.target);
+    if(inlineEditor || state.ui.presentationMode || placement || connectSourceId || portFromTarget(e.target)) return;
+    // Selection repaints SVG children between clicks. Hit-test the current node
+    // because the browser may dispatch the double-click on their SVG ancestor.
+    const target = document.elementFromPoint(e.clientX, e.clientY) || e.target;
+    const cid = componentIdFromTarget(target);
     if(cid){
-      const c = findComponent(cid);
-      selectComponent(cid,false);
-      openInlineEditor(c.name, { x:c.x+10, y:c.y+c.height/2-18, width:c.width-20, height:38 }, (value) => {
-        c.name = value.trim() || c.name;
-        pushHistory('rename component'); renderAll();
-      });
-      renderAll();
+      renameComponent(cid);
       return;
     }
-    const fid = flowIdFromTarget(e.target);
+    const fid = flowIdFromTarget(target);
     if(fid){
-      const f = findFlow(fid);
-      const p = connectionPath(f, orderedFlows());
-      selectFlow(fid);
-      openInlineEditor(f.messageText, { x:p.labelX-90, y:p.labelY-19, width:180, height:34 }, (value) => {
-        f.messageText = value.trim() || f.messageText;
-        pushHistory('rename message'); renderAll();
-      }, false);
-      renderAll();
+      renameFlow(fid);
     }
   }
 
@@ -2652,8 +3158,68 @@
 
   let spaceDown = false;
   function onKeyDown(e){
-    if(e.key === 'Escape' && els.flowEditorModal?.classList.contains('open')){ e.preventDefault(); closeFlowEditor(); return; }
+    if(exportDialog?.isOpen()) return;
+    if(e.key === 'Escape' && cancelGeometryDrag()){e.preventDefault();return;}
+    if(els.flowEditorModal?.classList.contains('open')){
+      if(e.key === 'Escape'){ e.preventDefault(); closeFlowEditor('cancel'); }
+      if(e.key === 'Tab'){
+        const controls = Array.from(els.flowEditorModal.querySelectorAll('button,input,select,textarea')).filter(el => !el.disabled && el.getClientRects().length);
+        const first = controls[0], last = controls[controls.length - 1];
+        if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+        else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+      }
+      return;
+    }
+    if(e.key === 'Escape' && drag?.type === 'label'){
+      e.preventDefault();
+      const flow = findFlow(drag.flowId);
+      if(drag.original) flow.labelOffset = drag.original;
+      else delete flow.labelOffset;
+      drag = null; saveLocal(true); renderAll(); return;
+    }
+    if(e.key === 'Escape' && library?.isOpen()){ e.preventDefault(); library.close(true); return; }
     if(isTextEditing()) return;
+    const focusedLabel = e.target.closest?.('.flowLabelGroup');
+    if(focusedLabel && !e.ctrlKey && !e.metaKey && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.key)){
+      e.preventDefault();
+      const flowId = focusedLabel.dataset.id;
+      if(e.key === 'Enter') return renameFlow(flowId);
+      const f = findFlow(flowId), box = labelPlacements.get(flowId), path = connectionPath(f);
+      const amount = e.shiftKey ? 20 : 5;
+      f.labelOffset = {x:box.x+box.width/2-path.labelX + (e.key === 'ArrowRight' ? amount : e.key === 'ArrowLeft' ? -amount : 0),
+        y:box.y+box.height/2-path.labelY + (e.key === 'ArrowDown' ? amount : e.key === 'ArrowUp' ? -amount : 0)};
+      selectFlow(flowId); pushHistory('move label'); renderAll(); focusFlowLabel(flowId); return;
+    }
+    const keyboardPort = portFromTarget(e.target);
+    if(keyboardPort && (e.key === 'Enter' || e.key === ' ')){
+      e.preventDefault();
+      handleConnectionPortClick(keyboardPort);
+      renderAll();
+      Array.from(els.svg.querySelectorAll('.componentPort')).find(port => port.dataset.id === keyboardPort.componentId && port.dataset.port === keyboardPort.portId)?.focus();
+      return;
+    }
+    if(e.target.closest?.('button,summary,a') && (e.key === ' ' || e.key === 'Enter')) return;
+    if(placement && ['Enter','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){
+      e.preventDefault();
+      if(!placement.point){
+        const rect = els.svg.getBoundingClientRect();
+        placement.point = screenToWorld({x:rect.left + rect.width/2, y:rect.top + rect.height/2});
+      }
+      if(e.key === 'Enter') commitPlacement(placement.point);
+      else {
+        placement.point.x += e.key === 'ArrowRight' ? GRID : e.key === 'ArrowLeft' ? -GRID : 0;
+        placement.point.y += e.key === 'ArrowDown' ? GRID : e.key === 'ArrowUp' ? -GRID : 0;
+        renderPlacementPreview();
+      }
+      return;
+    }
+    if(e.target.closest?.('.componentGroup') && e.key === 'Enter'){
+      e.preventDefault();
+      const cid = componentIdFromTarget(e.target);
+      selectComponent(cid, false); renderAll();
+      Array.from(els.svg.querySelectorAll('.componentPort')).find(port => port.dataset.id === cid)?.focus();
+      return;
+    }
     const mod = e.ctrlKey || e.metaKey;
     if(e.code === 'Space' && !spaceDown){
       spaceDown = true;
@@ -2675,10 +3241,10 @@
     else if(e.key === 'Escape'){
       e.preventDefault();
       if(state.ui.presentationMode) togglePresentation(false);
-      else { resetConnectionDraft(false); clearSelection(); renderAll(); }
+      else { if(drag?.type === 'connection') drag = null; resetConnectionDraft(false); clearSelection(); renderAll(); }
     }
-    else if(e.key === 'ArrowRight'){ e.preventDefault(); nextPhase(); }
-    else if(e.key === 'ArrowLeft'){ e.preventDefault(); prevPhase(); }
+    else if(e.key === 'ArrowRight' && state.ui.presentationMode){ e.preventDefault(); moveMessage(1); }
+    else if(e.key === 'ArrowLeft' && state.ui.presentationMode){ e.preventDefault(); moveMessage(-1); }
   }
 
   function onKeyUp(e){
@@ -2713,14 +3279,22 @@
   function closeContextMenu(){ els.contextMenu.style.display = 'none'; }
 
   function togglePresentation(force){
-    state.ui.presentationMode = typeof force === 'boolean' ? force : !state.ui.presentationMode;
+    const next = typeof force === 'boolean' ? force : !state.ui.presentationMode;
+    if(next === state.ui.presentationMode) return;
+    const selectedIndex = currentMessageIndex();
+    state.ui.presentationMode = next;
     if(state.ui.presentationMode){
-      state.settings.showGridBeforePresentation = state.settings.showGrid;
+      editorViewport = {zoom:state.settings.zoom,panX:state.settings.panX,panY:state.settings.panY};
       resetConnectionDraft(false);
       clearSelection();
+      if(!animation.running && animationGroups().length) previewMessage(Math.max(0,selectedIndex));
+      reconcileProcessingPhase();
+      renderAll();
       fitToScreen();
     }else{
-      state.settings.showGrid = state.settings.showGridBeforePresentation ?? state.settings.showGrid;
+      stopAnimation(false);
+      if(editorViewport) Object.assign(state.settings, editorViewport);
+      editorViewport = null;
       renderAll();
     }
     saveLocal(true);
@@ -2728,11 +3302,30 @@
   }
 
   function setupEvents(){
-    $('addComponentBtn').addEventListener('click', () => {
-      const rect = els.svg.getBoundingClientRect();
-      const w = screenToWorld({x:rect.left + rect.width/2, y:rect.top + rect.height/2});
-      addComponent(w.x, w.y);
+    reducedMotion.addEventListener('change',() => {renderCanvas();renderPlaybackProgress();});
+    globalThis.MessageFlowIcons.hydrate();
+    library = globalThis.MessageFlowLibrary.create({panel:$('elementLibrary'),button:$('addComponentBtn'),icon,choose:beginPlacement,
+      cancel:()=>{if(placement){placement=null;renderAll();}},
+      preview:entry=>{const c={shape:entry.id,x:4,y:4,width:entry.width,height:entry.height,...elements.style('technical')};return `<svg viewBox="0 0 ${c.width+8} ${c.height+8}" aria-hidden="true">${componentShapeEl(c).outerHTML}</svg>`;}
     });
+    $('diagramTheme').addEventListener('change',e=>applyDiagramTheme(e.target.value,$('diagramPalette').value));
+    $('diagramPalette').addEventListener('change',e=>applyDiagramTheme('soft',e.target.value));
+    $('diagramName').addEventListener('change', e => {
+      state.settings.diagramFileName = normalizedJsonFileName(e.target.value || 'Untitled diagram');
+      currentFileName = state.settings.diagramFileName;
+      pushHistory('rename diagram'); renderToolbarState();
+    });
+    $('diagramName').addEventListener('keydown', e => { if(e.key === 'Enter') e.target.blur(); });
+    for(const tab of ['flow','properties']){
+      $(tab + 'Tab').addEventListener('click', () => setSidebarTab(tab));
+      $(tab + 'Tab').addEventListener('keydown', e => {
+        if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){
+          e.preventDefault(); e.stopPropagation();
+          const next = e.key === 'Home' ? 'flow' : e.key === 'End' ? 'properties' : tab === 'flow' ? 'properties' : 'flow';
+          setSidebarTab(next); $(next + 'Tab').focus();
+        }
+      });
+    }
     $('connectBtn').addEventListener('click', () => { resetConnectionDraft(true); state.settings.activeCanvasMode = 'connect'; renderAll(); });
     $('selectModeBtn').addEventListener('click', () => { resetConnectionDraft(false); renderAll(); });
     $('panModeBtn').addEventListener('click', () => { resetConnectionDraft(true); state.settings.activeCanvasMode = 'pan'; renderAll(); });
@@ -2747,25 +3340,46 @@
     $('fitBtn').addEventListener('click', fitToScreen);
     $('gridBtn').addEventListener('click', () => { state.settings.showGrid = !state.settings.showGrid; saveLocal(true); renderAll(); });
     $('snapBtn').addEventListener('click', () => { state.settings.snapToGrid = !state.settings.snapToGrid; saveLocal(true); renderAll(); });
-    $('startBtn').addEventListener('click', startAnimation);
+    $('focusFlowBtn').addEventListener('click', () => { state.settings.focusSelectedFlow = !state.settings.focusSelectedFlow; saveLocal(true); renderAll(); });
+    $('startBtn').addEventListener('click', pauseResume);
+    $('loopAnimation').addEventListener('change', e => { state.settings.loopAnimation = e.target.checked; saveLocal(true); });
     $('stopBtn').addEventListener('click', () => stopAnimation());
-    $('nextBtn').addEventListener('click', () => { if(state.settings.animationMode !== 'auto') nextPhase(); });
-    $('prevBtn').addEventListener('click', () => { if(state.settings.animationMode !== 'auto') prevPhase(); });
+    $('prevMessageBtn').addEventListener('click', () => moveMessage(-1));
+    $('nextMessageBtn').addEventListener('click', () => moveMessage(1));
+    $('presentationTimeline').addEventListener('click', e => {
+      const button = e.target.closest('[data-presentation-group]');
+      if(button) jumpToMessage(Number(button.dataset.presentationGroup));
+    });
+    $('nextBtn').addEventListener('click', () => inspectPhase(1));
+    $('prevBtn').addEventListener('click', () => inspectPhase(-1));
     $('presentationBtn').addEventListener('click', () => togglePresentation());
     $('inactiveConnectionsBtn').addEventListener('click', () => {
       state.settings.showInactiveConnectionsInPresentation = !state.settings.showInactiveConnectionsInPresentation;
       saveLocal(true);
       renderAll();
     });
+    for(const field of ['showTokenMessageInPresentation','showProcessingActionInPresentation']){
+      $(field).addEventListener('change', event => {
+        state.settings[field] = event.target.checked;
+        if(field === 'showProcessingActionInPresentation') reconcileProcessingPhase();
+        saveLocal(true);
+        renderAll();
+      });
+    }
     $('sampleBtn').addEventListener('click', loadExample);
     els.emptyExampleBtn?.addEventListener('click', loadExample);
     $('exportBtn').addEventListener('click', exportJson);
     $('importBtn').addEventListener('click', () => els.importInput.click());
-    $('exportSvgBtn').addEventListener('click', exportSvg);
-    $('exportPngBtn').addEventListener('click', exportPng);
-    $('normalizeBtn').addEventListener('click', normalizeSequences);
+    exportDialog=globalThis.MessageFlowExportDialog.create();
+    $('exportVisualBtn').addEventListener('click',openExport);
+    $('exportPresentationBtn').addEventListener('click',openExport);
+    $('recoveryBtn').addEventListener('click', () => downloadBlob(autosave.recoveryText() || '', 'message-flow-recovery.json', 'application/json'));
+    $('retrySaveBtn').addEventListener('click', () => {
+      try{ autosave.resume(snapshot()); saveError = ''; }
+      catch(err){ saveError = err.message; }
+      renderSaveStatus();
+    });
     $('validateBtn').addEventListener('click', () => validateFlow(true));
-    $('normalizeToolbarBtn').addEventListener('click', normalizeSequences);
     $('alignHorizontalToolbarBtn')?.addEventListener('click', () => align('horizontal'));
     $('alignVerticalToolbarBtn')?.addEventListener('click', () => align('vertical'));
     $('distributeHToolbarBtn')?.addEventListener('click', distributeH);
@@ -2777,23 +3391,17 @@
       renderAll();
     });
     els.importInput.addEventListener('change', () => { const file = els.importInput.files?.[0]; if(file) importJson(file); els.importInput.value = ''; });
-    els.shapeButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const shape = btn.dataset.shape || 'roundedRectangle';
-        state.settings.defaultShape = shape;
-        const rect = els.svg.getBoundingClientRect();
-        const w = screenToWorld({x:rect.left + Math.min(rect.width * .36, 420), y:rect.top + Math.min(rect.height * .36, 280)});
-        const c = addComponent(w.x, w.y);
-        c.shape = shape;
-        saveLocal(true);
-        renderAll();
-      });
-    });
     if(els.connectionStyleSelect) els.connectionStyleSelect.addEventListener('change', () => { const flow = selectedFlow(); if(flow){ flow.connectionStyle = els.connectionStyleSelect.value; pushHistory('connection style'); } else state.settings.defaultConnectionStyle = els.connectionStyleSelect.value; saveLocal(true); renderAll(); });
     els.modeSelect?.addEventListener('change', (e) => {
       const input = e.target.closest?.('input[name="animationMode"]');
       if(!input) return;
       state.settings.animationMode = input.value === 'auto' ? 'auto' : 'step';
+      animation.phaseInspection = false;
+      animation.manualWaiting = false;
+      if(animation.autoTimer) clearTimeout(animation.autoTimer);
+      animation.autoTimer = null;
+      if(animation.running && !animation.paused && animation.phase !== 'transfer') scheduleAutoNext(animation.phase === 'arrived' ? 650 : 900);
+      if(animation.phase === 'completed' && state.settings.animationMode === 'step') completeAnimation();
       saveLocal(true);
       renderAll();
     });
@@ -2806,6 +3414,16 @@
     els.svg.addEventListener('pointermove', onSvgPointerMove);
     els.svg.addEventListener('pointerup', onSvgPointerUp);
     els.svg.addEventListener('pointercancel', onSvgPointerUp);
+    els.svg.addEventListener('pointerleave', () => { if(placement && !drag){ placement.point = null; renderPlacementPreview(); } });
+    els.svg.addEventListener('dragover', e => {
+      if(!placement) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+      placement.point = screenToWorld(e); renderPlacementPreview();
+    });
+    els.svg.addEventListener('drop', e => {
+      if(!placement) return;
+      e.preventDefault(); commitPlacement(screenToWorld(e));
+    });
     els.svg.addEventListener('contextmenu', (e) => e.preventDefault());
     els.svg.addEventListener('dblclick', onSvgDblClick);
     els.svg.addEventListener('wheel', onWheel, { passive:false });
@@ -2813,7 +3431,7 @@
     document.addEventListener('click', (e) => {
       if(!els.contextMenu.contains(e.target)) closeContextMenu();
       document.querySelectorAll('.menuGroup[open]').forEach(menu => {
-        if(!menu.contains(e.target)) menu.removeAttribute('open');
+        if(!menu.contains(e.target) || (menu.id !== 'playbackOptions' && e.target.closest('.menuPanel button,.menuPanel a'))) menu.removeAttribute('open');
       });
     });
     document.querySelectorAll('.menuGroup').forEach(menu => {
@@ -2827,14 +3445,16 @@
     document.addEventListener('keyup', onKeyUp);
     window.addEventListener('resize', () => renderAll());
 
+    setupAppearance();
+    flowReorder=globalThis.MessageFlowReorder.create({list:els.flowList,commit:(ids,id)=>{renumberFlows(ids.map(findFlow));selectFlow(id);pushHistory('reorder flows');renderAll();focusFlowGrip(id);showToast('Step order updated');},cancelled:(id,cancel)=>{renderFlowPanel(true);focusFlowGrip(id);if(cancel)showToast('Move cancelled');}});
+    els.flowList.addEventListener('dblclick',e=>{const row=e.target.closest('.flowItem');if(row&&!e.target.closest('button,input,select,textarea'))openFlowEditor(row.dataset.flowId);});
     els.flowList.addEventListener('click', onFlowListClick);
-    els.flowList.addEventListener('input', onFlowListInput);
-    els.flowList.addEventListener('change', onFlowListInput);
-    els.flowList.addEventListener('dragstart', onFlowDragStart);
-    els.flowList.addEventListener('dragover', onFlowDragOver);
-    els.flowList.addEventListener('drop', onFlowDrop);
-    els.flowList.addEventListener('dragend', onFlowDragEnd);
-    els.flowList.addEventListener('dragleave', (e) => { if(!els.flowList.contains(e.relatedTarget)) clearFlowDragVisuals(); });
+    els.flowList.addEventListener('keydown',e=>{
+      const item=e.target.closest('.flowItem');
+      if(item&&e.target.matches('.flowDragHandle')&&e.altKey&&['ArrowUp','ArrowDown'].includes(e.key)){
+        e.preventDefault();e.stopPropagation();moveFlowInList(item.dataset.flowId,e.key==='ArrowUp'?-1:1);
+      }
+    });
     els.flowEditorModal.addEventListener('click', onFlowEditorClick);
     els.flowEditorBody.addEventListener('input', onFlowEditorInput);
     els.flowEditorBody.addEventListener('change', onFlowEditorInput);
@@ -2862,11 +3482,29 @@
     const item = e.target.closest('.flowItem');
     if(!item) return;
     const flowId = item.dataset.flowId;
+    if(e.target.matches('input,textarea,select,label')) return;
     const action = e.target.closest('[data-action]')?.dataset.action;
+    if(action === 'reset-label') return resetLabel(flowId);
+    if(action === 'start-here') return startAnimation(animationGroups().findIndex(group => group.flows.some(f => f.id === flowId)));
     if(action === 'drag-flow'){
       e.preventDefault();
       e.stopPropagation();
       return;
+    }
+    if(action === 'toggle-details'){
+      selectFlow(flowId);
+      state.ui.expandedFlowId = state.ui.expandedFlowId === flowId ? null : flowId;
+      renderAll();
+      return;
+    }
+    if(action === 'move-up' || action === 'move-down') return moveFlowInList(flowId, action === 'move-up' ? -1 : 1);
+    if(action === 'upload-image') return uploadImageForFlow(flowId);
+    if(action === 'remove-image'){
+      findFlow(flowId).processingImageDataUrl = '';
+      pushHistory('remove image'); renderAll(); return;
+    }
+    if(action === 'delete-flow'){
+      selectFlow(flowId); deleteSelection(); return;
     }
     if(action === 'toggle-connector-visibility'){
       e.preventDefault();
@@ -2874,107 +3512,66 @@
       const flow = findFlow(flowId);
       if(!flow) return;
       flow.hiddenInDrawingMode = !flow.hiddenInDrawingMode;
-      state.ui.selectedFlowId = flow.id;
+      selectFlow(flow.id);
       pushHistory(flow.hiddenInDrawingMode ? 'hide connector in drawing mode' : 'show connector in drawing mode');
       renderAll();
       showToast(flow.hiddenInDrawingMode ? 'Connector hidden in drawing mode' : 'Connector shown in drawing mode');
       return;
     }
-    if(action === 'edit-flow' || (!action && e.target.closest('.flowSummary'))){
-      openFlowEditor(flowId);
-    }
+    if(action === 'edit-flow') return openFlowEditor(flowId);
+    selectFlow(flowId); renderToolbarState(); renderCanvas(); renderProperties(); associateLabels(els.propertiesPanel); updateStatus();
+    els.flowList.querySelectorAll('.flowItem').forEach(row=>row.classList.toggle('selected',row.dataset.flowId===flowId));
   }
 
-  function onFlowListInput(e){
-    const field = e.target.dataset.edit;
-    const item = e.target.closest('.flowItem');
-    if(!field || !item) return;
-    const f = findFlow(item.dataset.flowId);
-    if(!f) return;
-    if(field === 'sequenceNumber') f[field] = e.target.value.trim();
-    else if(field === 'timing') f.timing = e.target.value === 'withPrevious' ? 'withPrevious' : 'afterPrevious';
-    else f[field] = e.target.value;
-    state.ui.selectedFlowId = f.id;
-    renderCanvas(); renderImagePanels(); updateStatus(); saveLocal(true);
-  }
-
-  let draggedFlowId = null;
-  function clearFlowDragVisuals(){
-    els.flowList.querySelectorAll('.flowItem.dragging,.flowItem.dragOverBefore,.flowItem.dragOverAfter').forEach(item => {
-      item.classList.remove('dragging','dragOverBefore','dragOverAfter');
-    });
-  }
-  function onFlowDragStart(e){
-    const handle = e.target.closest('.flowDragHandle');
-    const item = e.target.closest('.flowItem');
-    if(!handle || !item){
-      e.preventDefault();
-      return;
-    }
-    draggedFlowId = item.dataset.flowId;
-    item.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', draggedFlowId);
-    const dragCard = item.cloneNode(true);
-    dragCard.classList.add('flowDragPreview');
-    dragCard.style.width = `${item.getBoundingClientRect().width}px`;
-    document.body.appendChild(dragCard);
-    e.dataTransfer.setDragImage(dragCard, 20, Math.min(28, item.offsetHeight / 2));
-    setTimeout(() => dragCard.remove(), 0);
-  }
-  function onFlowDragOver(e){
-    if(!draggedFlowId) return;
-    const item = e.target.closest('.flowItem');
-    if(!item) return;
-    e.preventDefault();
-    if(item.dataset.flowId === draggedFlowId) return;
-    els.flowList.querySelectorAll('.flowItem.dragOverBefore,.flowItem.dragOverAfter').forEach(n => n.classList.remove('dragOverBefore','dragOverAfter'));
-    const rect = item.getBoundingClientRect();
-    const after = e.clientY > rect.top + rect.height / 2;
-    item.classList.add(after ? 'dragOverAfter' : 'dragOverBefore');
-  }
-  function onFlowDrop(e){
-    e.preventDefault();
-    const item = e.target.closest('.flowItem');
-    if(!item || !draggedFlowId || item.dataset.flowId === draggedFlowId){
-      draggedFlowId = null;
-      clearFlowDragVisuals();
-      return;
-    }
+  function moveFlowInList(flowId, direction){
     const flows = orderedFlows();
-    const from = flows.findIndex(f => f.id === draggedFlowId);
-    let to = flows.findIndex(f => f.id === item.dataset.flowId);
-    if(from < 0 || to < 0){
-      draggedFlowId = null;
-      clearFlowDragVisuals();
-      return;
-    }
-    const rect = item.getBoundingClientRect();
-    const insertAfter = e.clientY > rect.top + rect.height / 2;
-    const [moved] = flows.splice(from,1);
-    if(from < to) to -= 1;
-    flows.splice(insertAfter ? to + 1 : to, 0, moved);
-    flows.forEach((f,i)=>{ f.sequenceNumber=i+1; if(i===0) f.timing='afterPrevious'; });
-    state.messageFlows.forEach(f => { if(!f.timing) f.timing='afterPrevious'; });
-    draggedFlowId = null;
-    clearFlowDragVisuals();
+    const from = flows.findIndex(f => f.id === flowId);
+    const to = from + direction;
+    if(from < 0 || to < 0 || to >= flows.length) return;
+    const [moved] = flows.splice(from, 1);
+    flows.splice(to, 0, moved);
+    renumberFlows(flows);
+    selectFlow(flowId);
     pushHistory('reorder flows'); renderAll();
+    const row = Array.from(els.flowList.querySelectorAll('.flowItem')).find(item => item.dataset.flowId === flowId);
+    row?.scrollIntoView({block:'nearest'});
+    row?.querySelector('.flowDragHandle')?.focus({preventScroll:true});
   }
-  function onFlowDragEnd(){
-    draggedFlowId = null;
-    clearFlowDragVisuals();
+
+  function focusFlowGrip(id){
+    const row=[...els.flowList.querySelectorAll('.flowItem')].find(c=>c.dataset.flowId===id);
+    row?.querySelector('.flowDragHandle')?.focus({preventScroll:true});
   }
+
+  function onFlowDragEnd(){flowReorder?.cancel();}
 
   function onPropertyInput(e){
     const comp = selectedComponent();
     const flow = selectedFlow();
     if(comp){
       if(e.target.id === 'propName') comp.name = e.target.value;
-      if(e.target.id === 'propShape') comp.shape = e.target.value;
+      if(['propWidth','propHeight'].includes(e.target.id)){
+        if(!e.target.checkValidity()){if(e.type==='change')e.target.reportValidity();return;}
+        comp[e.target.id==='propWidth'?'width':'height']=Number(e.target.value);
+      }
+      if(e.target.id === 'propShape'){
+        const shape=e.target.value;
+        if(!elements.canOwn({shape},'umlPort') && state.components.some(c=>c.ownerId===comp.id)){showToast('Remove attached ports and interfaces before changing to this shape');e.target.value=comp.shape;return;}
+        comp.shape=shape;
+        if(shape!=='umlComment')delete comp.annotatedElementId;
+      }
+      if(e.target.id === 'propStereotype') comp.stereotype=e.target.value;
+      if(e.target.id === 'propDetails') comp.details=e.target.value;
+      if(e.target.id === 'propNodeKind') comp.nodeKind=e.target.value;
+      if(e.target.id === 'propAnnotation') comp.annotatedElementId=e.target.value;
+      if(e.target.id === 'propOwner'){comp.ownerId=e.target.value;elements.sync(state.components);}
+      if(e.target.id === 'propAttachmentSide') comp.attachment.side=e.target.value;
+      if(e.target.id === 'propAttachmentRatio') comp.attachment.ratio=Math.max(0,Math.min(100,Number(e.target.value)))/100;
       if(e.target.id === 'propFill') comp.fillColor = e.target.value;
       if(e.target.id === 'propBorder') comp.borderColor = e.target.value;
       if(e.target.id === 'propText') comp.textColor = e.target.value;
       renderCanvas(); renderFlowPanel(); saveLocal(true);
+      if(e.type === 'change'){pushHistory('edit component');if(['propShape','propNodeKind','propOwner'].includes(e.target.id))renderAll();}
       return;
     }
     if(flow){
@@ -2988,10 +3585,13 @@
       if(e.target.id === 'propLineColor') { flow.style = flow.style || {}; flow.style.color = e.target.value; }
       if(e.target.id === 'propLineText') { flow.style = flow.style || {}; flow.style.textColor = e.target.value; }
       renderCanvas(); renderFlowPanel(); renderImagePanels(); saveLocal(true);
+      if(e.type === 'change') pushHistory('edit flow properties');
     }
   }
 
   function onPropertyClick(e){
+    if(e.target.closest('#editSelectedFlow'))return openFlowEditor(state.ui.selectedFlowId);
+    if(e.target.closest('#resetLabelBtn')) return resetLabel(state.ui.selectedFlowId);
     if(e.target.id === 'duplicatePropBtn') duplicateSelection();
   }
 
@@ -3003,5 +3603,7 @@
   setupEvents();
   initHistory();
   renderAll();
+  renderSaveStatus();
   setTimeout(() => saveLocal(true), 300);
-})();
+};
+if(typeof document !== 'undefined' && document.currentScript) globalThis.bootstrapMessageFlow();

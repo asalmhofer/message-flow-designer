@@ -3,6 +3,7 @@ import { createComponent } from '../model/componentModel.js';
 import { createConnector } from '../model/connectorModel.js';
 import { createFlowStep } from '../model/flowStepModel.js';
 import { createInitialAppState } from '../model/appState.js';
+import './diagramDocument.js';
 
 export function migrateProject(projectData){
   const version = Number(projectData?.schemaVersion || 1);
@@ -12,6 +13,7 @@ export function migrateProject(projectData){
 }
 
 function migrateLegacyV1(data){
+  data = globalThis.MessageFlowDocuments.normalizeDiagram(data);
   const components = (data.components || []).map(createComponent);
   const connectors = (data.messageFlows || data.connectors || []).map(flow => createConnector({
     id: flow.id,
@@ -22,7 +24,7 @@ function migrateLegacyV1(data){
     connectionStyle: flow.connectionStyle,
     controlPoint: flow.controlPoint,
     style: flow.style,
-    visibleInEditor: flow.visibleInEditor,
+    visibleInEditor: !flow.hiddenInDrawingMode,
   }));
   const flowSteps = (data.messageFlows || data.flowSteps || []).map(flow => createFlowStep({
     id: flow.id,
@@ -34,5 +36,7 @@ function migrateLegacyV1(data){
     processingImageDataUrl: flow.processingImageDataUrl,
     timing: flow.timing,
   }));
-  return createInitialAppState({ schemaVersion: DEFAULT_SCHEMA_VERSION, components, connectors, flowSteps, preferences: data.settings || data.preferences || {} });
+  return createInitialAppState({ schemaVersion: DEFAULT_SCHEMA_VERSION, components, connectors, flowSteps,
+    viewport: { zoom:data.settings.zoom, panX:data.settings.panX, panY:data.settings.panY },
+    preferences: data.settings || data.preferences || {} });
 }
