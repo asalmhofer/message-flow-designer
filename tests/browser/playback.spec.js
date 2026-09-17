@@ -58,6 +58,8 @@ for(const presentation of [false,true]) test(`Manual Next animates one complete 
 test('Manual Next plays the selected final message and a single-message diagram',async({page})=>{
   await seed(page);await manual(page);
   await page.getByRole('button',{name:'Start presentation mode',exact:true}).click();
+  await page.getByRole('button',{name:'Show presentation details',exact:true}).click();
+  await page.getByRole('tab',{name:'Flow overview',exact:true}).click();
   await page.locator('.timelineMessage').last().click();
   await expect(phase(page)).toHaveText('Ready');await expect(next(page)).toBeEnabled();
   await next(page).click();await expect(page.locator('#playbackCounter')).toHaveText('Message 3 of 3');
@@ -151,7 +153,7 @@ for(const width of [1280,980]) test(`playback and presentation layout stays fixe
   const data=journey();data.settings.showProcessingActionInPresentation=true;
   await page.setViewportSize({width,height:720});await seed(page,data);
   async function boxes(presentation){
-    const ids=['animationBar','prevMessageBtn','startBtn','nextMessageBtn','stopBtn','playbackSummary','playbackOptions',...(presentation?['presentationCounter','presentationPhase','presentationMessage','presentationRoute']:[])];
+    const ids=['animationBar','prevMessageBtn','startBtn','nextMessageBtn','stopBtn','playbackSummary','playbackOptions',...(presentation?['presentationMessage','presentationRoute','presentationDetailsBtn','presentationFullscreenBtn']:[])];
     return Promise.all(ids.map(id=>page.locator('#'+id).boundingBox()));
   }
   for(const presentation of [false,true]){

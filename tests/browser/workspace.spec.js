@@ -82,7 +82,8 @@ for(const cancel of [false,true])test(`Ctrl-drag copies a selected group only af
 });
 
 test('transfer trace and group progress freeze on pause, then arrival pulses once without delaying Manual Next',async({page})=>{
-  await page.clock.install();await seed(page,{presentation:true});await next(page).click();
+  await page.clock.install();await seed(page,{presentation:true});
+  await page.locator('#presentationDetailsBtn').click();await page.getByRole('tab',{name:'Flow overview',exact:true}).click();await next(page).click();
   await expect(page.locator('.departureCue')).toHaveCount(2);
   await page.clock.runFor(250);await expect(page.locator('.departureCue')).toHaveCount(0);
   await expect(page.locator('.messageTrace')).toHaveCount(2);

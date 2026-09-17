@@ -31,6 +31,9 @@
     grid:'M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18',
     focus:'M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5M8 12h8M12 8v8',
     screen:'M3 4h18v13H3zM8 21h8M12 17v4',
+    panel:'M3 4h18v16H3zM15 4v16',
+    fullscreen:'M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5',
+    exitFullscreen:'M3 8h5V3M21 8h-5V3M16 21v-5h5M8 21v-5H3',
     repeat:'M4 8h13l-3-3M20 16H7l3 3M20 8v4M4 16v-4'
   };
   function svg(name){

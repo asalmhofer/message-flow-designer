@@ -46,6 +46,14 @@
       <label for="diagramTheme">Theme</label><select id="diagramTheme"><option value="technical">Technical</option><option value="soft">Soft colour</option><option value="monochrome">Monochrome</option><option value="custom" disabled>Custom / existing colours</option></select>
       <label for="diagramPalette">Colour palette</label><select id="diagramPalette"><option value="blue">Slate blue</option><option value="teal">Sage &amp; teal</option><option value="violet">Soft violet</option></select><span class="themeNote">Theme changes can be undone.</span>
     </div></details>
+    <div class="presentationSummary" id="presentationSummary" aria-live="polite" hidden>
+      <div class="presentationEyebrow" hidden><span id="presentationCounter"></span><span id="presentationPhase"></span></div>
+      <h1 id="presentationMessage"></h1><p id="presentationRoute"></p>
+    </div>
+    <div class="presentationActions">
+      <button id="presentationDetailsBtn" type="button" aria-label="Show presentation details" aria-expanded="false" aria-controls="sidePanel"><span data-icon="panel"></span><span class="label">Details</span></button>
+      <button id="presentationFullscreenBtn" type="button" aria-label="Enter full screen"><span data-icon="fullscreen"></span><span class="label">Full screen</span></button>
+    </div>
     <button id="presentationBtn" class="presentAction" title="Start presentation mode" aria-label="Start presentation mode"><span data-icon="screen"></span><span class="label">Present</span></button>
   </div>
 
@@ -114,9 +122,12 @@
       <div id="drawingHint" class="drawingHint editOnly" role="status" hidden></div>
       <div class="storageNotice" id="storageNotice" role="status" hidden><span id="storageNoticeText"></span><button id="recoveryBtn" type="button" hidden>Download recovery data</button><button id="retrySaveBtn" type="button">Retry save</button><span>Export JSON to keep a portable copy.</span></div>
       <div class="statusBar" id="statusBar"><span id="modeStatus">Select mode</span><span id="selectionStatus">No selection</span><span id="animStatus">Animation stopped</span></div>
-      <div class="presentationSummary" id="presentationSummary" aria-live="polite" hidden>
-        <div class="presentationEyebrow"><span id="presentationCounter"></span><span id="presentationPhase" class="phaseChip"></span></div>
-        <h1 id="presentationMessage"></h1><p id="presentationRoute"></p>
+      <div class="playbackDock">
+      <div class="presentationZoom" role="toolbar" aria-label="Presentation view">
+        <button id="presentationFitBtn" type="button" aria-label="Fit diagram" aria-pressed="true" title="Fit diagram · keep fitted when the layout changes"><span data-icon="fit"></span>Fit</button>
+        <button id="presentationZoomOutBtn" type="button" aria-label="Zoom out in presentation" data-icon="minus"></button>
+        <output id="presentationZoomValue" aria-label="Presentation zoom">100%</output>
+        <button id="presentationZoomInBtn" type="button" aria-label="Zoom in in presentation" data-icon="plus"></button>
       </div>
       <div class="animationBar" id="animationBar" role="toolbar" aria-label="Animation and presentation controls">
         <button id="prevMessageBtn" aria-label="Previous message" title="Previous message (Left arrow)" data-icon="previous"></button>
@@ -149,6 +160,7 @@
           </div>
         </details>
       </div>
+      </div>
       <div class="toast" id="toast"></div>
       <div class="contextMenu" id="contextMenu" role="menu">
         <button id="ctxDuplicate">Duplicate</button>
@@ -162,6 +174,10 @@
       <div id="sidePanelResizeHandle" class="sidePanelResizeHandle" title="Resize flow panel" aria-label="Resize flow panel"></div>
       <div class="sideHead">
         <h2 id="sideTitle">Flow</h2>
+        <div class="presentationPanelTabs" role="tablist" aria-label="Presentation panel">
+          <button id="presentationDetailsTab" type="button" role="tab" aria-selected="true" aria-controls="presentationDetailsPanel">Details</button>
+          <button id="presentationFlowTab" type="button" role="tab" aria-selected="false" aria-controls="presentationFlowPanel" tabindex="-1">Flow overview</button>
+        </div>
         <div class="sidebarTabs editOnly" role="tablist" aria-label="Editor sidebar">
           <button id="flowTab" role="tab" aria-selected="true" aria-controls="flowPane">Flow <span id="flowCount">0</span></button>
           <button id="propertiesTab" role="tab" aria-selected="false" aria-controls="propertiesPane" tabindex="-1">Properties</button>
@@ -169,9 +185,11 @@
       </div>
       <div class="sideScroll" id="sideScroll">
         <div class="card presentationImageCard" id="presentationImageCard" style="display:none">
-          <div class="storyDetails"><span class="storyEyebrow" id="presentationStepLabel">Message details</span><div id="presentationDetails"></div><div id="presentationImagePreview"></div></div>
+          <div class="storyDetails" id="presentationDetailsPanel" role="tabpanel" aria-labelledby="presentationDetailsTab"><span class="storyEyebrow" id="presentationStepLabel">Message details</span><div id="presentationDetails"></div><div id="presentationImagePreview"></div></div>
+          <div id="presentationFlowPanel" role="tabpanel" aria-labelledby="presentationFlowTab" hidden>
           <div class="timelineHead"><h3>Flow overview</h3><span>Select a message to start here</span></div>
           <nav id="presentationTimeline" class="presentationTimeline" aria-label="Presentation messages"></nav>
+          </div>
         </div>
         <div class="card flowStepsCard" id="flowPane" role="tabpanel" aria-labelledby="flowTab">
           <div class="flowHelp">Drag the grip to reorder. Use the pencil to edit.<br>The eye hides a connection while editing; playback stays unchanged.</div>
@@ -207,6 +225,8 @@
 <script src="src/model/elementCatalog.js"></script>
 <script src="src/canvas/umlRenderer.js"></script>
 <script src="src/ui/elementLibrary.js"></script>
+<script src="src/canvas/connectionPlacement.js"></script>
+<script src="src/ui/connectedElements.js"></script>
 <script src="src/storage/diagramDocument.js"></script>
 <script src="src/canvas/imageExport.js"></script>
 <script src="src/canvas/labelLayout.js"></script>

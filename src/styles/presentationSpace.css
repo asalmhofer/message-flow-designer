@@ -1,0 +1,54 @@
+/* Presentation owns its layout; the SVG is exactly the unobstructed drawing area. */
+.presentationActions,.presentationZoom,.presentationPanelTabs{display:none}
+.playbackDock{display:contents}
+.presentation .toolbar{height:80px;min-height:80px;padding:8px 20px;gap:12px;flex-wrap:nowrap}
+.presentation .toolbar .brand,.presentation .toolbar .documentIdentity{display:none}
+.presentation .presentationSummary{position:static;pointer-events:auto;flex:1;min-width:0;color:#f5f8fc;margin:0}
+.presentationSummary[hidden],.presentationEyebrow[hidden]{display:none!important}
+.presentation .presentationSummary h1{font-size:20px;line-height:22px;letter-spacing:-.015em;height:44px;min-height:44px;margin:0;font-weight:600}
+.presentation .presentationSummary p{font-size:12px;line-height:16px;height:16px;margin:0;color:#bbcadd}
+.presentation .presentationActions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.presentation .presentationActions button,.presentation .toolbar .presentAction{height:36px;min-height:36px;margin:0;padding:8px 10px;border-radius:8px;font-size:12px}
+.presentation .presentationActions button{color:#e4ecf7;background:#2e3e55;border-color:#53647c}
+.presentation .presentationActions button[aria-expanded="true"]{background:#3c5272;border-color:#98b9e6}
+.presentation .toolbar .presentAction{background:#edf4ff;color:#234984;border-color:#edf4ff}
+.presentation .main{grid-template-columns:minmax(0,1fr) min(var(--presentation-side-w,320px),44vw);min-height:0;transition:none}
+.presentation.panelClosed .main{grid-template-columns:minmax(0,1fr)}
+.presentation.panelClosed .sidePanel{display:none}
+.presentation .sidePanel{min-width:0;position:relative;box-shadow:none}
+.presentation .sideHead{min-height:54px;padding:8px 45px 8px 12px}
+.presentation #sideTitle{display:none}
+.presentation .presentationPanelTabs{display:flex;gap:2px;width:100%;min-width:0}
+.presentationPanelTabs button{border:0;background:none;justify-content:center;font-size:12px;height:36px;border-radius:7px;padding:8px}
+.presentationPanelTabs button[aria-selected="true"]{background:#dfe9f8;color:#245bc2}
+.presentation .sidePanel .panelToggleBtn{top:10px;right:8px;left:auto}
+.presentation .sideScroll{flex:1;min-height:0}
+.presentation .presentationImageCard{height:100%;min-height:0}
+.presentation .presentationImageCard [hidden]{display:none!important}
+.presentation .storyDetails{padding:18px 16px;border:0}
+.presentation .storyEyebrow{margin-bottom:12px}
+.presentation .storyMessage p{font-size:13px;line-height:1.55}
+.presentation .timelineHead{padding:18px 16px 10px}
+.presentation .canvasWrap{display:grid;grid-template-rows:minmax(0,1fr) auto;min-width:0;min-height:0}
+.presentation svg#diagram{grid-area:1/1;width:100%;height:100%;min-height:0;cursor:grab}
+.presentation svg#diagram:active{cursor:grabbing}
+.presentation .flowPath{cursor:inherit}
+.presentation .playbackDock{grid-area:2/1;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 12px;padding:8px 12px;background:#f4f6f9;border-top:1px solid #e2e8f0;min-width:0}
+.presentation .presentationZoom{display:flex;align-items:center;gap:2px;flex:0 0 auto}
+.presentationZoom button{height:34px;min-height:34px;padding:7px;border:1px solid transparent;background:transparent;color:#42546e;font-size:12px}
+.presentationZoom button:hover{background:#e6edf6}
+.presentationZoom button[aria-pressed="true"]{background:#e3edfb;border-color:#b4cceb;color:#245bc2}
+.presentationZoom output{font-size:11px;width:40px;text-align:center;font-variant-numeric:tabular-nums;color:#5d6d82}
+.presentation .animationBar{position:relative;left:auto;right:auto;bottom:auto;transform:none;flex:0 1 430px;width:430px;max-width:100%;height:52px;margin:0;padding:5px;box-shadow:none}
+.presentationZoom :focus-visible,.presentationPanelTabs :focus-visible{outline:2px solid #7da5ed;outline-offset:2px}
+.presentation .storageNotice{position:absolute;z-index:40}
+@media(max-width:760px){
+  .presentation .toolbar{padding:8px 12px;gap:8px}
+  .presentation .presentationSummary h1{font-size:18px}
+  .presentation .presentationActions{gap:4px}
+  .presentation .presentationActions .label,.presentation .toolbar .presentAction .label{display:none}
+  .presentation .presentationActions button,.presentation .toolbar .presentAction{width:36px;min-width:36px;justify-content:center;padding:8px}
+  .presentation .playbackDock{padding:6px 10px}
+  .presentation .sideHead{padding-left:6px;padding-right:40px}
+  .presentationPanelTabs button{font-size:11px;padding:6px}
+}

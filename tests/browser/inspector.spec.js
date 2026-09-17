@@ -4,8 +4,9 @@ import {diagram} from '../fixtures/diagram.js';
 import {exportFile} from './exportHelpers.js';
 const key='event-flow-designer-state-v1';
 const saved=page=>page.evaluate(k=>JSON.parse(localStorage.getItem(k)),key);
-async function seed(page,flow=false){
+async function seed(page,flow=false,component={}){
   const data=diagram();data.components[0].shape='roundedRectangle';data.settings={...data.settings,zoom:1,panX:0,panY:0};
+  Object.assign(data.components[0],component);
   if(!flow)data.messageFlows=[];
   await page.goto('/');await page.locator('#importInput').setInputFiles({name:'Styles.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(data))});
 }
@@ -37,7 +38,7 @@ test('appearance changes round-trip through JSON and SVG; reset is undoable',asy
   await seed(page);await web(page).locator('.componentShape').click();
   await page.getByRole('button',{name:'Dashed border',exact:true}).click();
   await page.getByLabel('Border width',{exact:true}).selectOption('4');
-  await page.getByLabel('Text size',{exact:true}).selectOption('20');await page.getByLabel('Weight',{exact:true}).selectOption('700');await page.getByLabel('Alignment',{exact:true}).selectOption('left');
+  await page.getByLabel('Font size (px)',{exact:true}).fill('20');await page.getByLabel('Font size (px)',{exact:true}).press('Enter');await page.getByLabel('Weight',{exact:true}).selectOption('700');await page.getByLabel('Alignment',{exact:true}).selectOption('left');
   await expect(web(page).locator('.componentShape')).toHaveAttribute('stroke-dasharray','16 12');
   await expect(web(page).locator('.componentShape')).toHaveCSS('stroke-width','4px');
   await expect(web(page).locator('.componentText')).toHaveCSS('font-size','20px');
@@ -53,10 +54,33 @@ test('appearance changes round-trip through JSON and SVG; reset is undoable',asy
 });
 
 test('multiple selection displays mixed values and applies one shared style edit',async({page})=>{
-  await seed(page);await web(page).locator('.componentShape').click();await page.locator('.componentGroup[data-id=service] .componentShape').click({modifiers:['Shift']});
+  await seed(page,false,{fontSize:21.5});await web(page).locator('.componentShape').click();await page.locator('.componentGroup[data-id=service] .componentShape').click({modifiers:['Shift']});
   await expect(page.getByText('2 elements selected',{exact:true})).toBeVisible();await expect(page.locator('[data-color=fillColor]')).toContainText('Mixed');
   const before=(await saved(page)).components;await page.getByRole('button',{name:'Dotted border',exact:true}).click();expect((await saved(page)).components.every(c=>c.borderStyle==='dotted')).toBe(true);
   await page.getByRole('button',{name:'Undo',exact:true}).click();expect((await saved(page)).components).toEqual(before);
+  await web(page).locator('.componentShape').click();await page.locator('.componentGroup[data-id=service] .componentShape').click({modifiers:['Shift']});
+  const font=page.getByLabel('Font size (px)',{exact:true});await expect(font).toHaveAttribute('placeholder','Mixed');
+  await font.fill('17.5');await font.press('Enter');expect((await saved(page)).components.every(c=>c.fontSize===17.5)).toBe(true);
+  await page.getByRole('button',{name:'Undo',exact:true}).click();expect((await saved(page)).components).toEqual(before);
+});
+
+test('custom font sizes validate, persist, and scale UML labels and details',async({page})=>{
+  await seed(page,false,{shape:'umlNode',width:320,height:250,stereotype:'service',details:'Processes orders'});
+  await web(page).locator('.componentShape').first().click();
+  const font=page.getByLabel('Font size (px)',{exact:true});await expect(font).toHaveValue('14');
+  for(const invalid of ['7','97','']){
+    await font.fill(invalid);await font.press('Enter');expect((await saved(page)).components[0].fontSize).toBeUndefined();
+    await expect(web(page).locator('.elementText').filter({hasText:'Web UI'})).toHaveCSS('font-size','14px');
+  }
+  await font.fill('21.5');await font.press('Enter');
+  await expect(web(page).locator('.elementText').filter({hasText:'Web UI'})).toHaveCSS('font-size','21.5px');
+  await font.fill('28');await font.press('Enter');
+  await expect(web(page).locator('.elementText').filter({hasText:'Web UI'})).toHaveCSS('font-size','28px');
+  await expect(web(page).locator('.elementText').filter({hasText:'«service»'})).toHaveCSS('font-size','22px');
+  await expect(web(page).locator('.elementText').filter({hasText:'Processes orders'})).toHaveCSS('font-size','24px');
+  await font.fill('35');await font.press('Escape');await expect(font).toHaveValue('28');
+  await page.reload();await web(page).locator('.componentShape').first().click();await expect(font).toHaveValue('28');
+  await expect(web(page).locator('.elementText').filter({hasText:'Web UI'})).toHaveCSS('font-size','28px');
 });
 
 test('selected connections preview their own colour and width, including the arrowhead',async({page})=>{

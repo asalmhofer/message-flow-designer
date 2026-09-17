@@ -24,11 +24,12 @@
     }
     function html(flow=false){
       const border=flow?'lineStyle':'borderStyle', width=flow?'thickness':'borderWidth';
-      return `<section class="inspectorSection" aria-label="Appearance"><div class="inspectorHeading"><h3>Appearance</h3><button type="button" data-reset-appearance title="Reset selected appearance to diagram theme">Reset to theme</button></div>
+      const fontSize=value('fontSize');
+      const text=flow?'':`<section class="inspectorSection" aria-label="Text"><h3>Text</h3><div class="inspectorColumns"><label class="inspectorField">Font size (px)<input type="number" min="8" max="96" step="any" required aria-label="Font size (px)" data-appearance="fontSize" value="${escape(fontSize ?? '')}" placeholder="${fontSize === null?'Mixed':'14'}" list="componentFontSizes"><datalist id="componentFontSizes">${[10,12,14,16,18,20,24,32,48,64].map(size=>`<option value="${size}"></option>`).join('')}</datalist></label>${select('Weight','fontWeight',[[400,'Regular'],[500,'Medium'],[600,'Semibold'],[700,'Bold']])}</div>${select('Alignment','textAlign',[['left','Left'],['center','Centre'],['right','Right']])}</section>`;
+      return `${text}<section class="inspectorSection" aria-label="Appearance"><div class="inspectorHeading"><h3>Appearance</h3><button type="button" data-reset-appearance title="Reset selected appearance to diagram theme">Reset to theme</button></div>
         ${!flow ? colorRow('Fill','fillColor','fillOpacity') : ''}${colorRow(flow?'Line':'Border',flow?'color':'borderColor',flow?'opacity':'borderOpacity')}${colorRow('Text','textColor','textOpacity')}
         <div class="inspectorField"><span>${flow?'Line':'Border'} style</span><div class="borderOptions" role="group" aria-label="${flow?'Line':'Border'} style">${['solid','dashed','dotted','none'].map(s=>`<button type="button" data-appearance="${border}" data-value="${s}" aria-label="${s[0].toUpperCase()+s.slice(1)} ${flow?'line':'border'}" aria-pressed="${value(border)===s}"><span class="borderSample ${s}"></span><span>${s[0].toUpperCase()+s.slice(1)}</span></button>`).join('')}</div></div>
-        ${select(flow?'Line width':'Border width',width,[[.5,'0.5 px'],[1,'1 px'],[1.5,'1.5 px'],[1.7,'1.7 px'],[2,'2 px'],[3,'3 px'],[4,'4 px'],[6,'6 px']])}</section>
-        ${flow?'':`<section class="inspectorSection" aria-label="Text"><h3>Text</h3><div class="inspectorColumns">${select('Text size','fontSize',[[10,'10 px'],[12,'12 px'],[14,'14 px'],[16,'16 px'],[18,'18 px'],[20,'20 px'],[24,'24 px'],[32,'32 px']])}${select('Weight','fontWeight',[[400,'Regular'],[500,'Medium'],[600,'Semibold'],[700,'Bold']])}</div>${select('Alignment','textAlign',[['left','Left'],['center','Centre'],['right','Right']])}</section>`}`;
+        ${select(flow?'Line width':'Border width',width,[[.5,'0.5 px'],[1,'1 px'],[1.5,'1.5 px'],[1.7,'1.7 px'],[2,'2 px'],[3,'3 px'],[4,'4 px'],[6,'6 px']])}</section>`;
     }
     function refresh(){
       panel.querySelectorAll('[data-color]').forEach(b=>{
@@ -72,7 +73,8 @@
       if(button){e.stopImmediatePropagation();targets().forEach(t=>t[button.dataset.appearance]=button.dataset.value);preview();commit();refresh();}
       if(e.target.closest('[data-reset-appearance]')){e.stopImmediatePropagation();reset();}
     });
-    panel.addEventListener('change',e=>{const key=e.target.dataset.appearance;if(!key||!e.target.value)return;e.stopImmediatePropagation();const v=e.target.value;targets().forEach(t=>t[key]=['borderWidth','thickness','fontSize','fontWeight'].includes(key)?Number(v):v);preview();commit();});
+    panel.addEventListener('change',e=>{const key=e.target.dataset.appearance;if(!key)return;e.stopImmediatePropagation();if(!e.target.checkValidity()){e.target.reportValidity();return;}if(!e.target.value)return;const v=e.target.value;targets().forEach(t=>t[key]=['borderWidth','thickness','fontSize','fontWeight'].includes(key)?Number(v):v);preview();commit();});
+    panel.addEventListener('keydown',e=>{if(e.target.dataset.appearance!=='fontSize')return;if(e.key==='Enter'){e.preventDefault();e.target.blur();}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();e.target.value=value('fontSize') ?? '';e.target.blur();}});
     panel.addEventListener('input',e=>{if(e.target.dataset.appearance)e.stopImmediatePropagation();});
     return {html,close,refresh};
   }

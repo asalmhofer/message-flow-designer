@@ -95,7 +95,7 @@ test('presentation starts at the selected group, shows the story, and restores t
   await expect(page.getByRole('button',{name:'Next message',exact:true})).toBeDisabled();
   await page.getByRole('button',{name:'Previous message',exact:true}).click();
   await expect(page.locator('#presentationCounter')).toHaveText('Messages 1–2 of 3');
-  await expect(page.locator('#presentationMessage')).toHaveText('2 messages together');
+  await expect(page.locator('#presentationMessage')).toHaveText('Submit the customer order for validation | Accepted');
   await expect(page.locator('#presentationImagePreview img')).toHaveCount(1);
   await expect(page.locator('.timelineMessage[aria-current="step"]')).toContainText('Together');
   await page.getByRole('button',{name:'Close presentation mode',exact:true}).click();
@@ -119,6 +119,8 @@ test('message navigation cancels stale timers and paused jumps stay ready', asyn
   await page.getByRole('button',{name:'Start animation',exact:true}).click();
   await page.clock.runFor(2000);
   await expect(page.locator('#presentationPhase')).toHaveText('Received');
+  await page.getByRole('button',{name:'Show presentation details',exact:true}).click();
+  await page.getByRole('tab',{name:'Flow overview',exact:true}).click();
   await page.locator('.timelineMessage').first().click();
   await expect(page.locator('#presentationCounter')).toHaveText('Messages 1–2 of 3');
   await expect(page.locator('#presentationPhase')).toHaveText('Sending');

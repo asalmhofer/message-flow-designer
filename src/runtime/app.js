@@ -13,6 +13,11 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
   const elements = globalThis.MessageFlowElements;
   const SHAPES = elements.entries.map(e => e.id);
   let library = null;
+  let connectedPicker = null;
+  let connectedDraft = null;
+  let connectTarget = null;
+  let precisePortsId = null;
+  let nameMessageFlowId = null;
   let appearance = null;
   let flowReorder = null;
   let exportDialog = null;
@@ -30,6 +35,9 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
   const textMeasure = document.createElement('canvas').getContext('2d');
   let labelPlacements = new Map();
   let editorViewport = null;
+  let presentationAutoFit = true;
+  let presentationFitFrame = null;
+  let presentationOwnsFullscreen = false;
   let lastLabelClick = null;
 
   const els = {
@@ -178,7 +186,9 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
         zoom: 1,
         panX: 80,
         panY: 70,
-        presentationImagePanelOpen: true,
+        presentationPanelOpen: false,
+        presentationPanelWidth: 320,
+        presentationPanelTab: 'details',
         showInactiveConnectionsInPresentation: true,
         showTokenMessageInPresentation: true,
         showProcessingActionInPresentation: false,
@@ -400,13 +410,16 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
 
   function resizeFlowPanelFromPointer(e){
     const rect = els.main.getBoundingClientRect();
-    const width = clamp(rect.right - e.clientX, 280, Math.min(620, rect.width * 0.62));
-    state.settings.flowPanelWidth = Math.round(width);
-    document.documentElement.style.setProperty('--side-w', `${state.settings.flowPanelWidth}px`);
+    const presentation = state.ui.presentationMode;
+    const field = presentation ? 'presentationPanelWidth' : 'flowPanelWidth';
+    const width = clamp(rect.right - e.clientX, presentation ? 240 : 280, Math.min(presentation ? 480 : 620, rect.width * (presentation ? .44 : .62)));
+    state.settings[field] = Math.round(width);
+    document.documentElement.style.setProperty(presentation ? '--presentation-side-w' : '--side-w', `${state.settings[field]}px`);
+    queuePresentationFit();
   }
 
   function startFlowPanelResize(e){
-    if(!els.sidePanelResizeHandle || !state.settings.flowPanelOpen) return;
+    if(!els.sidePanelResizeHandle || !(state.ui.presentationMode ? state.settings.presentationPanelOpen : state.settings.flowPanelOpen)) return;
     e.preventDefault();
     els.sidePanelResizeHandle.setPointerCapture?.(e.pointerId);
     els.sidePanelResizeHandle.closest('.sidePanel')?.classList.add('resizing');
@@ -452,7 +465,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     $('focusFlowBtn').setAttribute('aria-pressed', String(state.settings.focusSelectedFlow === true));
     $('focusFlowBtn').classList.toggle('active', state.settings.focusSelectedFlow === true);
     document.body.classList.toggle('hideInactiveConnections', state.ui.presentationMode && !state.settings.showInactiveConnectionsInPresentation);
-    document.body.classList.toggle('panelClosed', state.ui.presentationMode && !state.settings.presentationImagePanelOpen);
+    document.body.classList.toggle('panelClosed', state.ui.presentationMode && !state.settings.presentationPanelOpen);
     document.body.classList.toggle('flowPanelClosed', !state.ui.presentationMode && !state.settings.flowPanelOpen);
     els.canvasWrap.classList.toggle('plain', state.ui.presentationMode || !state.settings.showGrid);
     els.selectModeBtn.classList.toggle('active', state.settings.activeCanvasMode === 'select' && !placement);
@@ -466,13 +479,16 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     const panelWidth = clamp(Number(state.settings.flowPanelWidth) || 390, 280, 620);
     state.settings.flowPanelWidth = panelWidth;
     document.documentElement.style.setProperty('--side-w', `${panelWidth}px`);
+    document.documentElement.style.setProperty('--presentation-side-w', `${state.settings.presentationPanelWidth}px`);
+    renderPresentationControls();
     const presentationBtn = $('presentationBtn');
     if(presentationBtn){
       const presentationLabel = state.ui.presentationMode ? 'Close presentation mode' : 'Start presentation mode';
       presentationBtn.title = presentationLabel;
       presentationBtn.setAttribute('aria-label', presentationLabel);
       const label = presentationBtn.querySelector('.label');
-      if(label) label.textContent = state.ui.presentationMode ? 'Exit presentation' : 'Present';
+      if(label) label.textContent = state.ui.presentationMode ? 'Exit' : 'Present';
+      presentationBtn.querySelector('[data-icon]').innerHTML = icon(state.ui.presentationMode ? 'close' : 'screen');
     }
     document.querySelectorAll('.shapeTool').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.shape === placement?.shape);
@@ -507,13 +523,13 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
       if(els.speedDisplay) els.speedDisplay.textContent = speedDisplayLabel(state.settings.animationSpeed);
     }
     els.sideTitle.textContent = state.ui.presentationMode ? 'Presentation' : 'Flow Steps';
-    const panelOpen = state.ui.presentationMode ? state.settings.presentationImagePanelOpen : state.settings.flowPanelOpen;
+    const panelOpen = state.ui.presentationMode ? state.settings.presentationPanelOpen : state.settings.flowPanelOpen;
     els.closePanelBtn.innerHTML = icon(panelOpen ? 'next' : 'previous');
     els.closePanelBtn.classList.toggle('expanded', panelOpen);
     els.closePanelBtn.classList.toggle('collapsed', !panelOpen);
     els.closePanelBtn.setAttribute('aria-label', panelOpen ? 'Collapse panel' : 'Expand panel');
     els.closePanelBtn.title = state.ui.presentationMode
-      ? (panelOpen ? 'Collapse processing image panel' : 'Expand processing image panel')
+      ? (panelOpen ? 'Close presentation panel' : 'Open presentation panel')
       : (panelOpen ? 'Collapse flow panel' : 'Expand flow panel');
     els.closePanelBtn.style.visibility = 'visible';
     const inactiveBtn = $('inactiveConnectionsBtn');
@@ -577,12 +593,15 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     renderSelectedFlowBendHandle();
     renderEndpointDragPreview();
     renderConnectionDraftPreview();
+    renderConnectedPreview();
     renderPlacementPreview();
     if(drag?.type === 'selectBox') renderSelectionBox();
+    renderNameMessageAction();
   }
 
   function cursorForMode(){
     if(drag?.type === 'pan') return 'grabbing';
+    if(state.ui.presentationMode) return 'grab';
     if(drag?.copyDrag) return 'copy';
     if(placement) return 'crosshair';
     if(state.settings.activeCanvasMode === 'pan') return 'grab';
@@ -598,6 +617,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     g.appendChild(componentShapeEl(c));
     g.appendChild(componentTextEl(c));
     renderComponentFeedback(g,c);
+    if(canConnect(c) && !elements.attached(c.shape) && !state.ui.presentationMode && !animation.running && !placement && !connectSourceId && state.settings.activeCanvasMode==='select') renderQuickConnect(g,c);
     if(shouldShowPorts(c.id)) renderPorts(g, c);
     if(isSelectedComponent(c.id) && !state.ui.presentationMode && !elements.attached(c.shape)) renderResizeHandles(g, c);
     els.componentsLayer.appendChild(g);
@@ -707,8 +727,22 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     return {anchor:align==='left'?'start':align==='right'?'end':'middle',x:align==='left'?c.x+padding:align==='right'?c.x+c.width-padding:c.x+c.width/2};
   }
 
+  function componentAppearance(c){
+    const attached=elements.attached(c.shape),isText=c.shape === 'text',isPackage=c.shape==='package';
+    const detailed=c.shape.startsWith('uml') || attached || isPackage || c.stereotype || c.details;
+    // Resolve omitted legacy values so a new shape inherits what the source displays.
+    return {
+      fillColor:c.fillColor || (isText?'transparent':'#ffffff'),fillOpacity:c.fillOpacity ?? (isPackage?.38:1),
+      borderColor:c.borderColor || (isText?'transparent':'#334155'),borderWidth:c.borderWidth ?? (isText?0:2),
+      borderStyle:c.borderStyle || 'solid',borderOpacity:c.borderOpacity ?? 1,
+      textColor:c.textColor || (detailed?'#202b3c':'#0f172a'),textOpacity:c.textOpacity ?? 1,
+      fontSize:c.fontSize ?? (isText?18:isPackage?13:attached?12:14),fontWeight:c.fontWeight ?? (attached?500:600),
+      textAlign:c.textAlign || (isPackage?'left':c.shape==='umlPort'&&c.attachment?.side==='left'?'right':c.shape==='umlPort'&&c.attachment?.side==='right'?'left':'center')
+    };
+  }
+
   function elementText(c){
-    const g=svgEl('g',{}),color=c.textColor||'#202b3c',size=c.fontSize ?? 14,weight=c.fontWeight ?? 600;
+    const g=svgEl('g',{}),{textColor:color,fontSize:size,fontWeight:weight}=componentAppearance(c);
     function text(value,x,y,font=size,anchor='middle',bold=weight){
       const t=svgEl('text',{class:'elementText',x,y,fill:color,'fill-opacity':c.textOpacity ?? 1,'text-anchor':anchor,'dominant-baseline':'middle'});
       t.style.fontSize=font+'px';t.style.fontWeight=bold;t.textContent=value;g.appendChild(t);
@@ -717,10 +751,10 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
       const side=c.attachment?.side || 'right',cx=c.x+c.width/2,cy=c.y+c.height/2;
       const x=c.shape==='umlPort' ? cx+(side==='left'?-14:side==='right'?14:0):cx;
       const y=c.shape==='umlPort' && ['left','right'].includes(side)?cy-15:cy+(side==='top'?-25:29);
-      text(c.name,x,y,c.fontSize ?? 12,c.textAlign?textPlacement(c).anchor:c.shape==='umlPort'&&side==='left'?'end':c.shape==='umlPort'&&side==='right'?'start':'middle',c.fontWeight ?? 500);return g;
+      text(c.name,x,y,size,c.textAlign?textPlacement(c).anchor:c.shape==='umlPort'&&side==='left'?'end':c.shape==='umlPort'&&side==='right'?'start':'middle',weight);return g;
     }
     if(c.shape==='package'){
-      const width=Math.min(c.width-20,Math.max(100,c.width*.48)),font=c.fontSize ?? 13,align=c.textAlign || 'left';
+      const width=Math.min(c.width-20,Math.max(100,c.width*.48)),font=size,align=c.textAlign || 'left';
       text(wrapMeasured(c.name,width-20,font,1)[0],c.x+(align==='left'?12:align==='right'?width-12:width/2),c.y+14,font,align==='left'?'start':align==='right'?'end':'middle');return g;
     }
     const kind=c.shape==='umlNode' && c.nodeKind && c.nodeKind!=='node' ? c.nodeKind : '';
@@ -728,18 +762,19 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     const top=c.y+(c.shape==='umlNode'?24:12),width=Math.max(40,c.width-(['umlComponent','umlArtifact'].includes(c.shape)?76:40));
     const pos=textPlacement(c,20);if(['umlComponent','umlArtifact'].includes(c.shape)&&c.textAlign==='right')pos.x-=36;
     if(c.shape==='umlNode' && (!c.textAlign||c.textAlign==='center'))pos.x-=8;
-    let y=type?top+11:top+size/2+4;
-    if(type){text('«'+wrapMeasured(type,width,11,1)[0]+'»',pos.x,y,11,pos.anchor,500);y+=size/2+16;}
-    if(kind&&c.stereotype){text('«'+wrapMeasured(c.stereotype,width,11,1)[0]+'»',pos.x,y,11,pos.anchor,500);y+=18;}
+    const metaSize=size*11/14,detailSize=size*12/14,detailLineHeight=detailSize+4;
+    let y=type?top+metaSize:top+size/2+4;
+    if(type){text('«'+wrapMeasured(type,width,metaSize,1)[0]+'»',pos.x,y,metaSize,pos.anchor,500);y+=size/2+metaSize+5;}
+    if(kind&&c.stereotype){text('«'+wrapMeasured(c.stereotype,width,metaSize,1)[0]+'»',pos.x,y,metaSize,pos.anchor,500);y+=metaSize+7;}
     const lineHeight=size+4,lines=wrapMeasured(c.name,width,size,Math.max(1,Math.min(2,Math.floor((c.y+c.height-y-8)/lineHeight))));
     for(const line of lines){text(line,pos.x,y,size,pos.anchor);y+=lineHeight;}
-    if(c.details){y+=6;for(const line of wrapMeasured(c.details,c.width-40,12,Math.max(0,Math.floor((c.y+c.height-y-8)/16)))){text(line,pos.x,y,12,pos.anchor,400);y+=16;}}
+    if(c.details){y+=6;for(const line of wrapMeasured(c.details,c.width-40,detailSize,Math.max(0,Math.floor((c.y+c.height-y-8)/detailLineHeight)))){text(line,pos.x,y,detailSize,pos.anchor,400);y+=detailLineHeight;}}
     return g;
   }
 
   function componentTextEl(c){
     if(c.shape.startsWith('uml') || elements.attached(c.shape) || c.shape === 'package' || c.stereotype || c.details) return elementText(c);
-    const size=c.fontSize ?? (c.shape === 'text'?18:14),lineHeight=size+4,pos=textPlacement(c);
+    const size=componentAppearance(c).fontSize,lineHeight=size+4,pos=textPlacement(c);
     const maxLines=Math.max(1,Math.floor((c.height-24)/lineHeight));
     const text=svgEl('text',{class:classNames('componentText',c.shape==='text'&&'textItemText'),x:pos.x,y:c.y+c.height/2,fill:c.textColor||'#0f172a','fill-opacity':c.textOpacity ?? 1,'data-id':c.id});
     text.style.fontSize=size+'px';text.style.fontWeight=c.fontWeight ?? 600;text.style.textAnchor=pos.anchor;
@@ -749,6 +784,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
   }
 
   function shouldShowPorts(componentId){
+    if(connectedDraft)return false;
     if(['package','text','note','umlComment'].includes(findComponent(componentId)?.shape)) return false;
     if(state.ui.presentationMode) return false;
     if(drag?.type === 'endpoint') return true;
@@ -756,7 +792,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     // so the user can choose a target port without activating a separate connect tool.
     if(connectSourceId) return true;
     if(state.settings.activeCanvasMode === 'connect') return true;
-    if(isSelectedComponent(componentId)) return true;
+    if(precisePortsId===componentId && isSelectedComponent(componentId)) return true;
     const f = selectedFlow();
     return !!(f && (f.sourceComponentId === componentId || f.targetComponentId === componentId));
   }
@@ -1045,12 +1081,18 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
   }
 
   function renderConnectionDraftPreview(){
-    if(state.ui.presentationMode || !connectSourceId || !connectChosenStyle) return;
+    if(state.ui.presentationMode || !connectSourceId || !connectChosenStyle || connectedDraft) return;
     const source = findComponent(connectSourceId);
     if(!source) return;
     const sp = portPosition(source, connectSourcePortId || centeredPortIdFromPoint(source, center(source)));
     const tp = connectPreviewPoint || defaultConnectionPreviewPoint(source, connectSourcePortId);
-    const d = draftConnectionPath(connectChosenStyle, sp, tp);
+    let d = draftConnectionPath(connectChosenStyle, sp, tp);
+    if(connectTarget){
+      const target=findComponent(connectTarget.componentId);
+      const preview={id:'connection-preview',sourceComponentId:source.id,targetComponentId:target.id,sourcePortId:connectSourcePortId,targetPortId:connectTarget.portId,connectionStyle:connectChosenStyle};
+      d=connectionPath(preview,[...orderedFlows(),preview]).d;
+      els.overlayLayer.appendChild(svgEl('rect',{class:'connectionTargetOutline',x:target.x-4/state.settings.zoom,y:target.y-4/state.settings.zoom,width:target.width+8/state.settings.zoom,height:target.height+8/state.settings.zoom,rx:6/state.settings.zoom}));
+    }
     els.overlayLayer.appendChild(svgEl('path', { class:'connectionDraftPreview', d, 'marker-end':'url(#arrowSelected)' }));
     els.overlayLayer.appendChild(svgEl('circle', { class:'connectionDraftDot', cx:tp.x, cy:tp.y, r:6 }));
   }
@@ -1098,6 +1140,23 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
       const width = Math.min(48,component.width-12),x=component.x+(component.width-width)/2,y=component.y+component.height+5;
       group.appendChild(svgEl('rect',{class:'processingIndicator',x,y,width,height:3,rx:1.5,fill:'#f2e5cb','pointer-events':'none'}));
       group.appendChild(svgEl('rect',{class:'processingProgress',x,y,width:width*(reducedMotion.matches ? .5 : Math.max(.06,feedback.elapsed/900)),height:3,rx:1.5,fill:'#c98718','pointer-events':'none'}));
+    }
+  }
+
+  function canConnect(component){return !!component && !['package','text','note','umlComment'].includes(component.shape);}
+
+  function renderQuickConnect(group,component){
+    const z=state.settings.zoom,rotation={right:0,bottom:90,left:180,top:270};
+    for(const [side] of PORT_SIDES){
+      const point=portPosition(component,makePortId(side,.5));
+      point.x+=(side==='right'?24:side==='left'?-24:0)/z;point.y+=(side==='bottom'?24:side==='top'?-24:0)/z;
+      const handle=svgEl('g',{class:'quickConnect','data-id':component.id,'data-side':side,role:'button',tabindex:0,
+        'aria-label':`Add or connect ${component.name} ${side}`,transform:`translate(${point.x} ${point.y}) scale(${1/z})`});
+      const title=svgEl('title');title.textContent='Drag to connect · click to add a component';handle.append(title);
+      // The transparent bridge keeps hover active between the edge and arrow.
+      // Precise ports and resize handles render above it and keep their own hits.
+      handle.append(svgEl('rect',{x:-24,y:-16,width:40,height:32,fill:'transparent',transform:`rotate(${rotation[side]})`}),svgEl('circle',{r:11,class:'quickConnectFace'}),svgEl('path',{d:'M-4 0H4M0 -4L4 0L0 4',transform:`rotate(${rotation[side]})`}));
+      group.append(handle);
     }
   }
 
@@ -1193,15 +1252,15 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
       if(animation.phase === 'transfer' || animation.phase === 'arrived'){
         const point = animation.token?.[flow.id] || cachedPath?.targetPoint || activePathData.targetPoint;
         const g = svgEl('g', { class:'messageToken' });
-        g.appendChild(svgEl('circle', { cx:point.x, cy:point.y, r:6, fill:'#d98b16', stroke:'#fff', 'stroke-width':2 }));
+        const scale=presentationLabelScale();
+        g.appendChild(svgEl('circle', { cx:point.x, cy:point.y, r:6*scale, fill:'#d98b16', stroke:'#fff', 'stroke-width':2*scale }));
         if(!state.ui.presentationMode || state.settings.showTokenMessageInPresentation){
-        const tokenLines = wrapMeasured(flow.messageText || 'Message', 190, 13, 2);
-        const tokenWidth = Math.max(90,...tokenLines.map(line => textMeasure.measureText(line).width+24));
-        const labelBg = svgEl('rect', { x:point.x-tokenWidth/2, y:point.y+16, width:tokenWidth, height:12+tokenLines.length*17, rx:6, fill:'#ffffff', stroke:'#e5c68e', 'stroke-width':1 });
-        g.appendChild(labelBg);
-        const text = svgEl('text', { x:point.x, y:point.y+32, 'text-anchor':'middle', 'font-size':12, 'font-weight':600, fill:'#92400e' });
-        tokenLines.forEach((line,index) => { const span = svgEl('tspan',{x:point.x,dy:index ? 17 : 0}); span.textContent=line; text.appendChild(span); });
-        g.appendChild(text);
+        const {lines,width}=tokenLabel(flow);
+        const label=svgEl('g',{class:'tokenLabel',transform:`translate(${point.x} ${point.y}) scale(${scale})`});
+        label.appendChild(svgEl('rect',{x:-width/2,y:16,width,height:12+lines.length*17,rx:6,fill:'#fff',stroke:'#e5c68e','stroke-width':1}));
+        const text=svgEl('text',{x:0,y:32,'text-anchor':'middle','font-size':12,'font-weight':600,fill:'#92400e'});
+        lines.forEach((line,index)=>{const span=svgEl('tspan',{x:0,dy:index?17:0});span.textContent=line;text.appendChild(span);});
+        label.appendChild(text);g.appendChild(label);
         }
         els.overlayLayer.appendChild(g);
       }
@@ -1210,36 +1269,48 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     if(animation.phase === 'processing' && processingPhaseEnabled()) renderProcessingCallouts(flows);
   }
 
-  function renderProcessingCallouts(flows){
-    const items = flows.map(flow => {
+  function presentationLabelScale(zoom=state.settings.zoom){return state.ui.presentationMode?Math.max(1,14/(12*zoom)):1;}
+
+  function tokenLabel(flow){
+    const lines=wrapMeasured(flow.messageText || 'Message',190,13,2);
+    return {lines,width:Math.max(90,...lines.map(line=>textMeasure.measureText(line).width+24))};
+  }
+
+  function processingItems(flows,scale=presentationLabelScale()){
+    return flows.map(flow => {
       const target = findComponent(flow.targetComponentId);
       const width = Math.max(180, Math.min(280,target.width+60));
       const heading = flows.filter(f=>f.targetComponentId===target.id).length>1 ? wrapMeasured(flow.messageText || 'Message',width-24,11,1)[0] : '';
       const lines = wrapMeasured(flow.actionText || 'Processing…',width-24,12,4);
-      return {id:flow.id,target,width,height:24+lines.length*17+(heading?18:0),heading,lines,text:flow.actionText || 'Processing…'};
+      return {id:flow.id,target,scale,width:width*scale,height:(24+lines.length*17+(heading?18:0))*scale,heading,lines,text:flow.actionText || 'Processing…'};
     });
+  }
+
+  function renderProcessingCallouts(flows){
+    const items=processingItems(flows);
     const rect = els.svg.getBoundingClientRect(), z = state.settings.zoom;
-    const top = state.ui.presentationMode ? $('presentationSummary').getBoundingClientRect().bottom-rect.top+16 : 12;
-    const viewport = {x:(12-state.settings.panX)/z,y:(top-state.settings.panY)/z,width:(rect.width-24)/z,height:Math.max(0,rect.height-top-90)/z};
+    const bottom=state.ui.presentationMode?12:90;
+    const viewport = {x:(12-state.settings.panX)/z,y:(12-state.settings.panY)/z,width:(rect.width-24)/z,height:Math.max(0,rect.height-12-bottom)/z};
     const boxes = globalThis.MessageFlowLabels.layoutCallouts(items,state.components,viewport);
     for(const item of items) els.overlayLayer.appendChild(processingBubble(item,boxes.get(item.id)));
   }
 
   function processingBubble(item, box){
     const {x,y,width,height} = box;
-    const {target,heading,lines} = item;
+    const {target,heading,lines,scale=1} = item;
     const g = svgEl('g', {class:'processingCallout','data-flow-id':item.id});
     const title = svgEl('title',{}); title.textContent = item.text; g.appendChild(title);
     const cx=target.x+target.width/2,cy=target.y+target.height/2;
     const end={x:clamp(cx,x,x+width),y:clamp(cy,y,y+height)};
     const start={x:clamp(end.x,target.x,target.x+target.width),y:clamp(end.y,target.y,target.y+target.height)};
     g.appendChild(svgEl('path',{class:'actionLeader',d:`M${start.x},${start.y} L${end.x},${end.y}`}));
-    g.appendChild(svgEl('rect', { class:'actionBubble', x, y, width, height, rx:14 }));
+    g.appendChild(svgEl('rect', { class:'actionBubble', x, y, width, height, rx:14*scale }));
     if(heading){
-      const text = svgEl('text',{class:'actionText actionHeading',x:x+width/2,y:y+22});text.textContent=heading;g.appendChild(text);
+      const text = svgEl('text',{class:'actionText actionHeading',x:x+width/2,y:y+22*scale});text.style.fontSize=`${11*scale}px`;text.textContent=heading;g.appendChild(text);
     }
     lines.forEach((line, i) => {
-      const t = svgEl('text', { class:'actionText', x:x+width/2, y:y+24+i*17+(heading?18:0) });
+      const t = svgEl('text', { class:'actionText', x:x+width/2, y:y+(24+i*17+(heading?18:0))*scale });
+      t.style.fontSize=`${12*scale}px`;
       t.textContent = line;
       g.appendChild(t);
     });
@@ -1254,8 +1325,8 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     els.overlayLayer.appendChild(svgEl('rect', { class:'selectionBox', x, y, width:w, height:h }));
   }
 
-  function connectionPath(flow, allFlows=orderedFlows()){
-    const s = findComponent(flow.sourceComponentId), t = findComponent(flow.targetComponentId);
+  function connectionPath(flow, allFlows=orderedFlows(), lookup=findComponent){
+    const s = lookup(flow.sourceComponentId), t = lookup(flow.targetComponentId);
     const duplicates = allFlows.filter(f => f.sourceComponentId === flow.sourceComponentId && f.targetComponentId === flow.targetComponentId);
     const dupIndex = Math.max(0, duplicates.findIndex(f => f.id === flow.id));
     const dupOffset = (dupIndex - (duplicates.length - 1)/2) * 24;
@@ -1430,7 +1501,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
 
   function setupAppearance(){
     appearance=globalThis.MessageFlowAppearance.create({panel:els.propertiesPanel,
-      getTargets:()=>state.ui.selectedComponentIds.length?state.ui.selectedComponentIds.map(id=>{const c=findComponent(id);return {model:c,defaults:c?{borderColor:'#334155',borderWidth:2,textColor:'#0f172a',fontSize:c.shape==='text'?18:c.shape==='package'?13:elements.attached(c.shape)?12:14,fontWeight:elements.attached(c.shape)?500:600,textAlign:c.shape==='package'?'left':'center',fillOpacity:c.shape==='package'?.38:1}:null};}).filter(t=>t.model):selectedFlow()?[{model:selectedFlow().style ||= {}}]:[],
+      getTargets:()=>state.ui.selectedComponentIds.length?state.ui.selectedComponentIds.map(id=>{const c=findComponent(id);return {model:c,defaults:c?componentAppearance(c):null};}).filter(t=>t.model):selectedFlow()?[{model:selectedFlow().style ||= {}}]:[],
       preview:()=>{renderCanvas();},commit:()=>{pushHistory('edit appearance');renderToolbarState();},
       reset:()=>{state.ui.selectedComponentIds.forEach(id=>resetComponentAppearance(findComponent(id)));const f=selectedFlow();if(f)f.style={color:state.settings.diagramTheme==='monochrome'?'#525252':'#64748b',textColor:'#202b3c',thickness:1.7};pushHistory('reset appearance');renderAll();}});
   }
@@ -1464,8 +1535,10 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     $('presentationSummary').hidden = !state.ui.presentationMode;
     $('presentationCounter').textContent = counter;
     $('presentationPhase').textContent = phaseLabel;
-    $('presentationMessage').textContent = flows.length > 1 ? flows.length + ' messages together' : flows[0]?.messageText || 'Your flow, one message at a time';
+    $('presentationMessage').textContent = [...new Set(flows.map(f => f.messageText))].join(' | ') || 'Your flow, one message at a time';
+    $('presentationMessage').title=$('presentationMessage').textContent;
     $('presentationRoute').textContent = flows.length > 1 ? flows.map(f => f.messageText).join(' · ') : flows.length ? componentName(flows[0].sourceComponentId) + ' → ' + componentName(flows[0].targetComponentId) : 'Choose a message below or press Play to begin.';
+    $('presentationRoute').title=$('presentationRoute').textContent;
     els.presentationStepLabel.textContent = flows.length > 1 ? 'Simultaneous messages' : 'Message details';
     $('presentationDetails').innerHTML = flows.length ? flows.map(f => '<section class="storyMessage">'
       + (flows.length > 1 ? '<h3>' + escapeHtml(f.messageText) + '</h3><p class="storyRoute">' + escapeHtml(componentName(f.sourceComponentId) + ' → ' + componentName(f.targetComponentId)) + '</p>' : '')
@@ -1618,7 +1691,8 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     els.selectionStatus.textContent = sc ? `${sc} component${sc>1?'s':''} selected` : state.ui.selectedFlowId ? '1 message flow selected' : 'No selection';
     els.animStatus.textContent = animation.running ? `${animation.paused ? 'Paused' : 'Animation'}: step ${activeSequenceLabel() || animation.index + 1}, ${animation.phase}${activeFlows().length > 1 ? ' (' + activeFlows().length + ' simultaneous)' : ''}` : 'Animation stopped';
     const hint = placement ? (elements.attached(placement.shape) ? `Place ${shapeLabel(placement.shape).toLowerCase()} on a component${placement.shape === 'umlPort' ? '' : ' or port'} · Esc to cancel` : `Place ${shapeLabel(placement.shape).toLowerCase()} · click to place · Esc to cancel`)
-      : connectSourceId ? 'Drag to a destination, or click a target handle · Esc to cancel'
+      : connectedDraft ? 'Choose an element to add and connect · Esc to cancel'
+      : connectSourceId ? 'Drop on a component to connect, or on empty space to add one · Esc to cancel'
       : state.settings.activeCanvasMode === 'connect' ? 'Choose a source connection handle, then a destination' : '';
     $('drawingHint').textContent = hint;
     $('drawingHint').hidden = !hint;
@@ -1691,19 +1765,24 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
   }
 
   function addComponent(x,y){
-    const shape=state.settings.defaultShape || 'umlComponent', entry=elements.get(shape),{width,height}=entry;
+    const shape=state.settings.defaultShape || 'umlComponent',c=buildComponent(shape,x,y);
+    state.components.push(c); elements.sync(state.components);
+    selectComponent(c.id,false);pushHistory('add element');renderAll();return c;
+  }
+
+  function buildComponent(shape,x,y){
+    const entry=elements.get(shape),{width,height}=entry;
     const count=state.components.filter(c=>c.shape===shape).length+1;
     const c={id:id('cmp'),name:entry.name+' '+count,shape,x:snap(x-width/2),y:snap(y-height/2),width,height,
       ...elements.style(state.settings.diagramTheme,state.settings.diagramPalette,shape),zIndex:shape==='package'?0:nextZ()};
     if(elements.attached(shape)) Object.assign(c,attachmentAt({x,y},shape));
     if(shape==='umlNode') c.nodeKind='node';
-    state.components.push(c); elements.sync(state.components);
-    selectComponent(c.id,false);pushHistory('add element');renderAll();return c;
+    return c;
   }
 
   function nextZ(){ return Math.max(0, ...state.components.map(c => c.zIndex || 0)) + 1; }
 
-  function addFlow(sourceId, targetId, sourcePortId=null, targetPortId=null, connectionStyle=null){
+  function addFlow(sourceId, targetId, sourcePortId=null, targetPortId=null, connectionStyle=null, commit=true){
     if(!sourceId || !targetId) return;
     renumberFlows();
     const f = {
@@ -1725,14 +1804,81 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     };
     state.messageFlows.push(f);
     selectFlow(f.id);
-    connectSourceId = null;
-    connectSourcePortId = null;
-    connectChosenStyle = null;
-    connectPreviewPoint = null;
-    state.settings.activeCanvasMode = 'select';
-    pushHistory('add flow');
+    resetConnectionDraft(false,false);
+    if(commit){
+      nameMessageFlowId=f.id;
+      pushHistory('add flow');renderAll();showToast('Message flow created');
+    }
+    return f;
+  }
+
+  function openConnectedPicker(point=null){
+    const source=findComponent(connectSourceId);if(!source)return;
+    const side=portDefById(source,connectSourcePortId)?.[2]||'right';
+    const shape=canConnect({shape:source.shape})&&!elements.attached(source.shape)?source.shape:'umlComponent';
+    connectedDraft={sourceId:source.id,sourcePortId:connectSourcePortId,side,point,shape,reverse:false,style:connectChosenStyle,previewId:id('preview'),viewport:{panX:state.settings.panX,panY:state.settings.panY,zoom:state.settings.zoom}};
+    connectTarget=null;library?.close();
+    const preview=connectedComponent();
+    const rect=els.svg.getBoundingClientRect();
+    // Reveal the neighbour; only zoom out if the element itself cannot fit.
+    state.settings.zoom=clamp(Math.min(state.settings.zoom,(rect.width-104)/Math.max(preview.width,210),(rect.height-144)/Math.max(preview.height,132)),MIN_ZOOM,MAX_ZOOM);
+    const z=state.settings.zoom;
+    const left=preview.x*z+state.settings.panX,top=preview.y*z+state.settings.panY;
+    const right=left+Math.max(preview.width,210)*z,bottom=top+Math.max(preview.height,132)*z;
+    state.settings.panX+=left<80?80-left:right>rect.width-24?rect.width-24-right:0;
+    state.settings.panY+=top<24?24-top:bottom>rect.height-120?rect.height-120-bottom:0;
+    connectedPicker.open({sourceName:source.name,point:{...worldToScreen({x:preview.x,y:preview.y+preview.height/2}),width:preview.width*state.settings.zoom},shape});
     renderAll();
-    showToast('Message flow created');
+  }
+
+  function connectedComponent(){
+    if(!connectedDraft)return null;
+    const {sourceId,side,point,shape}=connectedDraft,source=findComponent(sourceId);if(!source)return null;
+    const entry=elements.get(shape),size=shape===source.shape?source:entry;
+    const box=globalThis.MessageFlowConnectionPlacement.place(source,side,point,size,state.components,state.settings.snapToGrid?GRID:0);
+    return {id:connectedDraft.previewId,shape,name:entry.name,...box,...componentAppearance(source)};
+  }
+
+  function renderConnectedPreview(){
+    const component=connectedComponent();if(!component)return;
+    const source=findComponent(connectedDraft.sourceId),a=portPosition(source,connectedDraft.sourcePortId),port=nearestPortId(component,a);
+    const group=svgEl('g',{class:'connectedPreview','aria-hidden':'true'});
+    const padding=6/state.settings.zoom+(component.borderWidth || 0)/2;
+    group.append(svgEl('rect',{class:'connectedPreviewOutline',x:component.x-padding,y:component.y-padding,width:component.width+padding*2,height:component.height+padding*2,rx:6/state.settings.zoom}));
+    group.append(componentShapeEl(component),componentTextEl(component));els.overlayLayer.append(group);
+    const flow={id:'preview',sourceComponentId:source.id,targetComponentId:component.id,sourcePortId:connectedDraft.sourcePortId,targetPortId:port,connectionStyle:connectedDraft.style};
+    if(connectedDraft.reverse){[flow.sourceComponentId,flow.targetComponentId]=[flow.targetComponentId,flow.sourceComponentId];[flow.sourcePortId,flow.targetPortId]=[flow.targetPortId,flow.sourcePortId];}
+    els.overlayLayer.append(svgEl('path',{class:'connectionDraftPreview',d:connectionPath(flow,[flow],id=>id===source.id?source:component).d,'marker-end':'url(#arrowSelected)'}));
+  }
+
+  function commitConnectedComponent(shape,reverse){
+    if(!connectedDraft || !findComponent(connectedDraft.sourceId))return;
+    Object.assign(connectedDraft,{shape,reverse});
+    const draft={...connectedDraft},box=connectedComponent(),source=findComponent(draft.sourceId);
+    const component=buildComponent(shape,box.x+box.width/2,box.y+box.height/2);
+    Object.assign(component,componentAppearance(source),{x:box.x,y:box.y,width:box.width,height:box.height});state.components.push(component);
+    const port=nearestPortId(component,portPosition(source,draft.sourcePortId));
+    const flow=reverse?addFlow(component.id,source.id,port,draft.sourcePortId,draft.style,false):addFlow(source.id,component.id,draft.sourcePortId,port,draft.style,false);
+    selectComponent(component.id,false);nameMessageFlowId=flow.id;library?.used(shape);
+    pushHistory('add connected component');renderAll();
+    const createdAt=historyIndex;
+    openInlineEditor(component.name,{x:component.x+10,y:component.y+component.height/2-18,width:component.width-20,height:38},value=>{
+      if(!findComponent(component.id))return;
+      component.name=value.trim()||component.name;
+      // Initial naming belongs to the creation, so one Undo removes both objects.
+      if(historyIndex===createdAt){history[historyIndex]=snapshot();saveLocal(true);}else pushHistory('rename component');
+      renderAll();
+    },false);
+    showToast('Component and connection created');
+  }
+
+  function renderNameMessageAction(){
+    const button=$('nameMessageAction');if(!button)return;
+    const flow=findFlow(nameMessageFlowId),box=labelPlacements.get(nameMessageFlowId);
+    button.hidden=!flow||!box||state.ui.presentationMode||animation.running||!!connectSourceId||!!placement||!(state.ui.selectedFlowId===flow.id||isSelectedComponent(flow.sourceComponentId)||isSelectedComponent(flow.targetComponentId));
+    if(button.hidden)return;
+    const point=worldToScreen({x:box.x+box.width/2,y:box.y+box.height}),rect=els.svg.getBoundingClientRect();
+    button.style.left=`${clamp(point.x-56,rect.left+8,rect.right-120)}px`;button.style.top=`${clamp(point.y+8,rect.top+8,rect.bottom-50)}px`;
   }
 
   function selectComponent(componentId, additive){
@@ -2224,19 +2370,110 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     updateStatus();
   }
 
+  function renderPresentationControls(){
+    const open=state.settings.presentationPanelOpen,tab=state.settings.presentationPanelTab;
+    $('presentationDetailsBtn').setAttribute('aria-expanded',String(open));
+    $('presentationDetailsBtn').setAttribute('aria-label',open?'Hide presentation details':'Show presentation details');
+    $('presentationDetailsBtn').title=open?'Hide presentation panel':'Show details and flow overview';
+    $('presentationFitBtn').setAttribute('aria-pressed',String(presentationAutoFit));
+    $('presentationZoomValue').textContent=`${Math.round(state.settings.zoom*100)}%`;
+    const fullscreen=!!document.fullscreenElement,button=$('presentationFullscreenBtn');
+    button.disabled=!document.fullscreenEnabled && !fullscreen;
+    button.setAttribute('aria-label',fullscreen?'Exit full screen':'Enter full screen');
+    button.title=button.disabled?'Full screen is unavailable in this browser':fullscreen?'Exit full screen':'Enter full screen';
+    button.querySelector('[data-icon]').innerHTML=icon(fullscreen?'exitFullscreen':'fullscreen');
+    button.querySelector('.label').textContent=fullscreen?'Windowed':'Full screen';
+    for(const name of ['details','flow']){
+      const active=tab===name,node=$(name==='details'?'presentationDetailsTab':'presentationFlowTab');
+      node.setAttribute('aria-selected',String(active));node.tabIndex=active?0:-1;
+      $(name==='details'?'presentationDetailsPanel':'presentationFlowPanel').hidden=!active;
+    }
+  }
+
+  function setPresentationTab(tab,focus=false){
+    state.settings.presentationPanelTab=tab;renderPresentationControls();saveLocal(true);
+    if(focus)$(tab==='details'?'presentationDetailsTab':'presentationFlowTab').focus();
+  }
+
+  function togglePresentationPanel(){
+    state.settings.presentationPanelOpen=!state.settings.presentationPanelOpen;
+    renderAll();refitPresentation();saveLocal(true);
+    if(!state.settings.presentationPanelOpen)$('presentationDetailsBtn').focus();
+  }
+
+  async function togglePresentationFullscreen(){
+    try{
+      if(document.fullscreenElement)await document.exitFullscreen();
+      else{
+        await document.documentElement.requestFullscreen();
+        presentationOwnsFullscreen=true;
+        if(!state.ui.presentationMode){await document.exitFullscreen();presentationOwnsFullscreen=false;}
+      }
+    }catch{showToast('Full screen could not start. You can still use presentation in this window.');}
+  }
+
+  function queuePresentationFit(){
+    if(!state.ui.presentationMode || !presentationAutoFit || presentationFitFrame!==null)return;
+    presentationFitFrame=requestAnimationFrame(()=>{presentationFitFrame=null;refitPresentation();});
+  }
+
+  function refitPresentation(){
+    if(!state.ui.presentationMode || !presentationAutoFit)return;
+    const rect=els.svg.getBoundingClientRect(),padding=24;
+    if(rect.width<=padding*2||rect.height<=padding*2)return;
+    const components=Array.from(els.componentsLayer.children,el=>el.getBBox());
+    const paths=new Map(Array.from(els.connectionsLayer.querySelectorAll('.flowPath'),el=>[el.dataset.id,el.getBBox()]));
+    const groups=animationGroups();
+    function boundsAt(zoom){
+      const boxes=[...components,...paths.values()],scale=presentationLabelScale(zoom);
+      if(state.settings.showTokenMessageInPresentation){
+        for(const flow of orderedFlows()){
+          const box=paths.get(flow.id);if(!box)continue;
+          const label=tokenLabel(flow),width=label.width*scale,height=(12+label.lines.length*17)*scale;
+          boxes.push({x:box.x-width/2,y:box.y+16*scale,width:box.width+width,height:box.height+height});
+        }
+      }
+      if(state.settings.showProcessingActionInPresentation){
+        for(const group of groups){
+          const callouts=globalThis.MessageFlowLabels.layoutCallouts(processingItems(group.flows,scale),state.components);
+          boxes.push(...callouts.values());
+        }
+      }
+      if(!boxes.length)return {x:0,y:0,width:640,height:360};
+      const x=Math.min(...boxes.map(b=>b.x)),y=Math.min(...boxes.map(b=>b.y));
+      return {x,y,width:Math.max(1,Math.max(...boxes.map(b=>b.x+b.width))-x),height:Math.max(1,Math.max(...boxes.map(b=>b.y+b.height))-y)};
+    }
+    // Labels have a minimum screen size, so their world-space bounds depend on zoom.
+    // Find the largest fit once for all messages; playback never moves the camera.
+    let low=.01,high=MAX_ZOOM;
+    for(let i=0;i<22;i++){
+      const zoom=(low+high)/2,bounds=boundsAt(zoom);
+      if(bounds.width*zoom<=rect.width-padding*2 && bounds.height*zoom<=rect.height-padding*2)low=zoom;
+      else high=zoom;
+    }
+    const bounds=boundsAt(low);
+    state.settings.zoom=low;
+    state.settings.panX=rect.width/2-(bounds.x+bounds.width/2)*low;
+    state.settings.panY=rect.height/2-(bounds.y+bounds.height/2)*low;
+    renderCanvas();renderToolbarState();
+  }
+
   function fitToScreen(){
+    if(state.ui.presentationMode){
+      presentationAutoFit = true;
+      refitPresentation();
+      return;
+    }
     if(!state.components.length) return resetZoom();
     const bounds = diagramBounds();
     const rect = els.svg.getBoundingClientRect();
-    const padding = state.ui.presentationMode ? 40 : 70;
-    const topSpace = state.ui.presentationMode ? 150 : 0;
-    const bottomSpace = state.ui.presentationMode ? 100 : 0;
+    const padding = 70;
     const zx = (rect.width - padding*2) / bounds.width;
-    const zy = (rect.height - padding*2 - topSpace - bottomSpace) / bounds.height;
+    const zy = (rect.height - padding*2) / bounds.height;
     const z = clamp(Math.min(zx, zy), MIN_ZOOM, MAX_ZOOM);
     state.settings.zoom = z;
     state.settings.panX = rect.width/2 - (bounds.x + bounds.width/2) * z;
-    state.settings.panY = topSpace + (rect.height-topSpace-bottomSpace)/2 - (bounds.y + bounds.height/2) * z;
+    state.settings.panY = rect.height/2 - (bounds.y + bounds.height/2) * z;
     saveLocal(true);
     renderAll();
   }
@@ -2253,8 +2490,9 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
   }
 
   function setZoom(newZoom, centerClient){
+    if(state.ui.presentationMode) presentationAutoFit = false;
     const old = state.settings.zoom;
-    const z = clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
+    const z = clamp(newZoom, state.ui.presentationMode ? .01 : MIN_ZOOM, MAX_ZOOM);
     const rect = els.svg.getBoundingClientRect();
     const cx = centerClient?.x ?? rect.left + rect.width/2;
     const cy = centerClient?.y ?? rect.top + rect.height/2;
@@ -2267,6 +2505,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
   }
 
   function resetZoom(){
+    if(state.ui.presentationMode){setZoom(1);return;}
     state.settings.zoom = 1;
     state.settings.panX = 80;
     state.settings.panY = 70;
@@ -2373,7 +2612,9 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     return ({ straight:'Straight arrow', arc:'Curved arrow', angular:'Elbow arrow' }[style] || 'Arrow');
   }
 
-  function resetConnectionDraft(keepConnectMode=false){
+  function resetConnectionDraft(keepConnectMode=false,restoreView=true){
+    if(restoreView&&connectedDraft?.viewport)Object.assign(state.settings,connectedDraft.viewport);
+    connectedPicker?.close();connectedDraft=null;connectTarget=null;precisePortsId=null;nameMessageFlowId=null;
     lastComponentClick = null;
     placement = null;
     connectSourceId = null;
@@ -2622,7 +2863,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
   function startConnectionFromSource(componentId, portId){
     lastComponentClick = null;
     const component = findComponent(componentId);
-    if(!component || state.ui.presentationMode) return false;
+    if(!canConnect(component) || state.ui.presentationMode) return false;
     connectSourceId = componentId;
     connectSourcePortId = portId || nearestPortId(component, center(component));
     placement = null;
@@ -2655,7 +2896,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     const target = e.target;
     const world = screenToWorld(e);
 
-    if(state.settings.activeCanvasMode === 'pan' || e.button === 1 || e.button === 2 || (e.spaceKeyTempPan === true)){
+    if(state.ui.presentationMode || state.settings.activeCanvasMode === 'pan' || e.button === 1 || e.button === 2 || (e.spaceKeyTempPan === true)){
       drag = { type:'pan', startX:e.clientX, startY:e.clientY, panX:state.settings.panX, panY:state.settings.panY };
       els.svg.setPointerCapture(e.pointerId);
       renderAll();
@@ -2663,6 +2904,12 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     }
 
     if(state.ui.presentationMode) return;
+    const quickHandle=target.closest?.('.quickConnect');
+    if(quickHandle){
+      startConnectionFromSource(quickHandle.dataset.id,makePortId(quickHandle.dataset.side,.5));
+      drag={type:'connection',quick:true,startClientX:e.clientX,startClientY:e.clientY,moved:false};
+      els.svg.setPointerCapture(e.pointerId);e.preventDefault();return;
+    }
     if(placement){
       e.preventDefault();
       commitPlacement(world);
@@ -2734,9 +2981,8 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
 
     const connectionComponentId = componentIdFromTarget(target);
     if(connectionComponentId && connectSourceId && connectChosenStyle){
-      const component = findComponent(connectionComponentId);
-      const targetPortId = component ? centeredPortIdFromPoint(component, world) : null;
-      addFlow(connectSourceId, connectionComponentId, connectSourcePortId, targetPortId, connectChosenStyle);
+      const destination=resolveComponentPortFromPointer(e);
+      if(destination)addFlow(connectSourceId, destination.componentId, connectSourcePortId, destination.portId, connectChosenStyle);
       e.stopPropagation();
       return;
     }
@@ -2843,6 +3089,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
 
   function onSvgPointerMove(e){
     const world = screenToWorld(e);
+    if(connectedDraft)return;
     if(placement && !drag){
       placement.point = world;
       renderPlacementPreview();
@@ -2850,9 +3097,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     }
     if(!drag){
       if(connectSourceId && connectChosenStyle){
-        connectPreviewPoint = world;
-        els.overlayLayer.querySelectorAll('.connectionDraftPreview,.connectionDraftDot').forEach(node => node.remove());
-        renderConnectionDraftPreview();
+        updateConnectionPreview(e,world);
         updateStatus();
       }
       return;
@@ -2866,6 +3111,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
       return;
     }
     if(drag.type === 'pan'){
+      if(state.ui.presentationMode && Math.hypot(e.clientX-drag.startX,e.clientY-drag.startY)>1) presentationAutoFit = false;
       state.settings.panX = drag.panX + (e.clientX - drag.startX);
       state.settings.panY = drag.panY + (e.clientY - drag.startY);
       renderAll();
@@ -2873,10 +3119,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     }
     if(drag.type === 'connection'){
       if(Math.hypot(e.clientX - drag.startClientX, e.clientY - drag.startClientY) > 4) drag.moved = true;
-      const drop = resolveComponentPortFromPointer(e);
-      connectPreviewPoint = drop ? portPosition(findComponent(drop.componentId), drop.portId) : world;
-      els.overlayLayer.querySelectorAll('.connectionDraftPreview,.connectionDraftDot').forEach(node => node.remove());
-      renderConnectionDraftPreview();
+      updateConnectionPreview(e,world);
       return;
     }
     if(drag.type === 'endpoint'){
@@ -2987,8 +3230,13 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
       else if(finishedDrag.moved){
         const drop = resolveComponentPortFromPointer(e);
         if(drop) addFlow(connectSourceId, drop.componentId, connectSourcePortId, drop.portId, connectChosenStyle);
-        else resetConnectionDraft(false);
+        else {
+          const hit=document.elementFromPoint(e.clientX,e.clientY);
+          if(hit && els.svg.contains(hit) && !componentIdFromTarget(hit))openConnectedPicker(screenToWorld(e));
+          else resetConnectionDraft(false);
+        }
       }
+      else if(finishedDrag.quick)openConnectedPicker();
       renderAll();
       return;
     }
@@ -3071,14 +3319,30 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
 
   function resolveComponentPortFromPointer(pointerEvent){
     const el = document.elementFromPoint(pointerEvent.clientX, pointerEvent.clientY) || pointerEvent.target;
+    const rect=els.svg.getBoundingClientRect();
+    if(!el || !els.svg.contains(el) || pointerEvent.clientX<rect.left || pointerEvent.clientX>rect.right || pointerEvent.clientY<rect.top || pointerEvent.clientY>rect.bottom)return null;
     const explicitPort = portFromTarget(el);
-    if(explicitPort) return explicitPort;
+    if(explicitPort && canConnect(findComponent(explicitPort.componentId))) return explicitPort;
     const componentId = componentIdFromTarget(el);
-    if(!componentId) return null;
     const component = findComponent(componentId);
-    if(!component) return null;
-    const world = screenToWorld(pointerEvent);
-    return { componentId, portId:centeredPortIdFromPoint(component, world) };
+    const world = screenToWorld(pointerEvent),source=findComponent(connectSourceId);
+    let target=canConnect(component)?component:null;
+    if(!target){
+      const margin=18/state.settings.zoom;
+      target=state.components.filter(c=>canConnect(c)&&c.id!==connectSourceId)
+        .map(c=>({c,d:Math.hypot(Math.max(c.x-world.x,0,world.x-c.x-c.width),Math.max(c.y-world.y,0,world.y-c.y-c.height))}))
+        .filter(item=>item.d<=margin).sort((a,b)=>a.d-b.d)[0]?.c;
+    }
+    if(!target)return null;
+    const toward=source?portPosition(source,connectSourcePortId):world;
+    return {componentId:target.id,portId:nearestPortId(target,toward)};
+  }
+
+  function updateConnectionPreview(event,world){
+    connectTarget=resolveComponentPortFromPointer(event);
+    connectPreviewPoint=connectTarget?portPosition(findComponent(connectTarget.componentId),connectTarget.portId):world;
+    els.overlayLayer.querySelectorAll('.connectionDraftPreview,.connectionDraftDot,.connectionTargetOutline').forEach(node=>node.remove());
+    renderConnectionDraftPreview();
   }
 
   function selectByBox(a,b){
@@ -3094,6 +3358,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
   }
 
   function componentIdFromTarget(target){
+    if(!target)return null;
     return target.closest?.('.componentGroup')?.dataset.id || target.dataset?.id && findComponent(target.dataset.id)?.id;
   }
   function flowIdFromTarget(target){
@@ -3159,6 +3424,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
   let spaceDown = false;
   function onKeyDown(e){
     if(exportDialog?.isOpen()) return;
+    if(connectedPicker?.isOpen())return;
     if(e.key === 'Escape' && cancelGeometryDrag()){e.preventDefault();return;}
     if(els.flowEditorModal?.classList.contains('open')){
       if(e.key === 'Escape'){ e.preventDefault(); closeFlowEditor('cancel'); }
@@ -3190,6 +3456,10 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
         y:box.y+box.height/2-path.labelY + (e.key === 'ArrowDown' ? amount : e.key === 'ArrowUp' ? -amount : 0)};
       selectFlow(flowId); pushHistory('move label'); renderAll(); focusFlowLabel(flowId); return;
     }
+    const keyboardQuick=e.target.closest?.('.quickConnect');
+    if(keyboardQuick && (e.key==='Enter'||e.key===' ')){
+      e.preventDefault();startConnectionFromSource(keyboardQuick.dataset.id,makePortId(keyboardQuick.dataset.side,.5));openConnectedPicker();return;
+    }
     const keyboardPort = portFromTarget(e.target);
     if(keyboardPort && (e.key === 'Enter' || e.key === ' ')){
       e.preventDefault();
@@ -3216,7 +3486,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     if(e.target.closest?.('.componentGroup') && e.key === 'Enter'){
       e.preventDefault();
       const cid = componentIdFromTarget(e.target);
-      selectComponent(cid, false); renderAll();
+      selectComponent(cid, false);precisePortsId=cid;renderAll();
       Array.from(els.svg.querySelectorAll('.componentPort')).find(port => port.dataset.id === cid)?.focus();
       return;
     }
@@ -3240,7 +3510,8 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     else if(e.key === 'Delete' || e.key === 'Backspace'){ e.preventDefault(); deleteSelection(); }
     else if(e.key === 'Escape'){
       e.preventDefault();
-      if(state.ui.presentationMode) togglePresentation(false);
+      if(state.ui.presentationMode && document.fullscreenElement) void document.exitFullscreen().catch(()=>{});
+      else if(state.ui.presentationMode) togglePresentation(false);
       else { if(drag?.type === 'connection') drag = null; resetConnectionDraft(false); clearSelection(); renderAll(); }
     }
     else if(e.key === 'ArrowRight' && state.ui.presentationMode){ e.preventDefault(); moveMessage(1); }
@@ -3284,6 +3555,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     const selectedIndex = currentMessageIndex();
     state.ui.presentationMode = next;
     if(state.ui.presentationMode){
+      presentationAutoFit = true;
       editorViewport = {zoom:state.settings.zoom,panX:state.settings.panX,panY:state.settings.panY};
       resetConnectionDraft(false);
       clearSelection();
@@ -3292,6 +3564,8 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
       renderAll();
       fitToScreen();
     }else{
+      if(presentationOwnsFullscreen && document.fullscreenElement) void document.exitFullscreen().catch(()=>{});
+      presentationOwnsFullscreen = false;
       stopAnimation(false);
       if(editorViewport) Object.assign(state.settings, editorViewport);
       editorViewport = null;
@@ -3353,6 +3627,34 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     $('nextBtn').addEventListener('click', () => inspectPhase(1));
     $('prevBtn').addEventListener('click', () => inspectPhase(-1));
     $('presentationBtn').addEventListener('click', () => togglePresentation());
+    $('presentationDetailsBtn').addEventListener('click',togglePresentationPanel);
+    $('presentationFullscreenBtn').addEventListener('click',()=>void togglePresentationFullscreen());
+    $('presentationFitBtn').addEventListener('click',fitToScreen);
+    $('presentationZoomOutBtn').addEventListener('click',()=>setZoom(state.settings.zoom/1.15));
+    $('presentationZoomInBtn').addEventListener('click',()=>setZoom(state.settings.zoom*1.15));
+    for(const tab of ['details','flow']){
+      const button=$(tab==='details'?'presentationDetailsTab':'presentationFlowTab');
+      button.addEventListener('click',()=>setPresentationTab(tab));
+      button.addEventListener('keydown',event=>{
+        if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){
+          event.preventDefault();event.stopPropagation();
+          setPresentationTab(event.key==='Home'?'details':event.key==='End'?'flow':tab==='details'?'flow':'details',true);
+        }
+      });
+    }
+    document.addEventListener('fullscreenchange',()=>{
+      if(!document.fullscreenElement) presentationOwnsFullscreen=false;
+      renderToolbarState();queuePresentationFit();
+    });
+    connectedPicker=globalThis.MessageFlowConnectedElements.create({
+      entries:elements.entries.filter(entry=>canConnect({shape:entry.id})&&!elements.attached(entry.id)),icon,
+      preview:entry=>{const c={shape:entry.id,x:4,y:4,width:entry.width,height:entry.height,...elements.style('technical')};return `<svg viewBox="0 0 ${c.width+8} ${c.height+8}" aria-hidden="true">${componentShapeEl(c).outerHTML}</svg>`;},
+      onPreview:(shape,reverse)=>{if(connectedDraft){Object.assign(connectedDraft,{shape,reverse});renderCanvas();}},
+      onChoose:commitConnectedComponent,
+      onCancel:()=>{const source=connectSourceId;resetConnectionDraft(false);renderAll();Array.from(els.componentsLayer.children).find(el=>el.dataset.id===source)?.focus({preventScroll:true});}
+    });
+    const nameMessageButton=document.createElement('button');nameMessageButton.id='nameMessageAction';nameMessageButton.className='nameMessageAction';nameMessageButton.type='button';nameMessageButton.textContent='Name message';nameMessageButton.hidden=true;
+    document.body.append(nameMessageButton);nameMessageButton.addEventListener('click',()=>{const flowId=nameMessageFlowId;nameMessageFlowId=null;nameMessageButton.hidden=true;renameFlow(flowId);});
     $('inactiveConnectionsBtn').addEventListener('click', () => {
       state.settings.showInactiveConnectionsInPresentation = !state.settings.showInactiveConnectionsInPresentation;
       saveLocal(true);
@@ -3364,6 +3666,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
         if(field === 'showProcessingActionInPresentation') reconcileProcessingPhase();
         saveLocal(true);
         renderAll();
+        refitPresentation();
       });
     }
     $('sampleBtn').addEventListener('click', loadExample);
@@ -3385,8 +3688,8 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     $('distributeHToolbarBtn')?.addEventListener('click', distributeH);
     $('distributeVToolbarBtn')?.addEventListener('click', distributeV);
     els.closePanelBtn.addEventListener('click', () => {
-      if(state.ui.presentationMode) state.settings.presentationImagePanelOpen = !state.settings.presentationImagePanelOpen;
-      else state.settings.flowPanelOpen = !state.settings.flowPanelOpen;
+      if(state.ui.presentationMode){togglePresentationPanel();return;}
+      state.settings.flowPanelOpen = !state.settings.flowPanelOpen;
       saveLocal(true);
       renderAll();
     });
@@ -3443,7 +3746,8 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     });
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
-    window.addEventListener('resize', () => renderAll());
+    window.addEventListener('resize', () => {renderAll();queuePresentationFit();});
+    new ResizeObserver(queuePresentationFit).observe(els.svg);
 
     setupAppearance();
     flowReorder=globalThis.MessageFlowReorder.create({list:els.flowList,commit:(ids,id)=>{renumberFlows(ids.map(findFlow));selectFlow(id);pushHistory('reorder flows');renderAll();focusFlowGrip(id);showToast('Step order updated');},cancelled:(id,cancel)=>{renderFlowPanel(true);focusFlowGrip(id);if(cancel)showToast('Move cancelled');}});

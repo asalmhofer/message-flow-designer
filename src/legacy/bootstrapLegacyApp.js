@@ -2,6 +2,8 @@
 import '../model/elementCatalog.js';
 import '../canvas/umlRenderer.js';
 import '../ui/elementLibrary.js';
+import '../canvas/connectionPlacement.js';
+import '../ui/connectedElements.js';
 import '../storage/diagramDocument.js';
 import '../canvas/imageExport.js';
 import '../canvas/labelLayout.js';

@@ -12,6 +12,8 @@ Message flows may include `labelOffset: { "x": 40, "y": -24 }`. The finite coord
 
 ## Presentation playback (version 1)
 
+The optional presentation panel settings are `presentationPanelOpen` (boolean, defaults to `false`), `presentationPanelWidth` (240–480 pixels, defaults to 320) and `presentationPanelTab` (`"details"` or `"flow"`, defaults to `"details"`). They persist independently of the editor's panel settings. The earlier `presentationImagePanelOpen` field remains accepted for compatibility but does not control the new panel. Automatic fit, full-screen ownership and presentation zoom/pan are session state; the saved viewport remains the editor's viewport.
+
 Optional boolean presentation settings are `showTokenMessageInPresentation` (defaults to `true`) and `showProcessingActionInPresentation` (defaults to `false`). The first controls message-name labels on moving tokens. The second is displayed as **Show processing phase**: when false, presentation playback skips the Processing phase, its callouts and its delay, including during phase inspection. Manual playback is ready for Next immediately on arrival; Auto retains the brief Received cue. The existing property name is retained for file compatibility. Editor playback always includes processing. Both settings persist in v1 JSON and autosave. Missing fields in older files use the defaults; non-boolean values are rejected. Manual playback's current message, phase-inspection mode and waiting state remain session-only.
 
 ## UML elements and diagram themes (version 1)
@@ -24,7 +26,7 @@ Ports and interfaces require `ownerId` and `attachment: { "side": "right", "rati
 
 ## Appearance (version 1)
 
-Components may contain `borderStyle` (`solid`, `dashed`, `dotted`, `none`), `borderWidth`, `fillOpacity`, `borderOpacity`, `textOpacity`, `fontSize`, `fontWeight` (400/500/600/700) and `textAlign` (`left`, `center`, `right`). Opacity values range from 0 to 1; `fillColor: "transparent"` means no fill. Omitted fields preserve the legacy rendering defaults. Flow `style` may contain `lineStyle` with the same pattern choices, `thickness`, `opacity`, and `textOpacity`. Invalid style values are rejected before replacing the active document.
+Components may contain `borderStyle` (`solid`, `dashed`, `dotted`, `none`), `borderWidth`, `fillOpacity`, `borderOpacity`, `textOpacity`, `fontSize` (8–96, including decimals), `fontWeight` (400/500/600/700) and `textAlign` (`left`, `center`, `right`). `fontSize` controls the main label; UML stereotypes and details scale proportionally. Opacity values range from 0 to 1; `fillColor: "transparent"` means no fill. Omitted fields preserve the legacy rendering defaults. Connected-component creation saves a copy of the source's effective appearance, including omitted defaults; subsequent style edits remain independent. Flow `style` may contain `lineStyle` with the same pattern choices, `thickness`, `opacity`, and `textOpacity`. Invalid style values are rejected before replacing the active document.
 
 `hiddenInDrawingMode` remains an editing-only flag. It hides the connector, label and editing handles even when its card is selected, while leaving playback order and animation unchanged. Reordering previews never mutate the saved diagram until the drop is committed.
 

@@ -108,7 +108,7 @@ test('presentation export includes heading and embedded images, preserves styles
   await seed(page);await openExport(page,'SVG');await page.locator('#exportComposition').selectOption('presentation');
   await expect(page.locator('#exportStatus')).toHaveText('Ready to export');
   const bytes=await download(page,'SVG',info),svg=bytes.toString();
-  expect(svg).toContain('2 messages together');expect(svg).toContain('data:image/png;base64,');expect(svg).toContain('rgb(219, 234, 254)');
+  expect(svg).toContain('Submit order | Accepted');expect(svg).toContain('data:image/png;base64,');expect(svg).toContain('rgb(219, 234, 254)');
   expect(svg).not.toMatch(/resizeHandle|componentPort|componentSelectionOutline|fileMenu/);
 });
 

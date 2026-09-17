@@ -101,17 +101,18 @@
     });
     if(data.settings !== undefined) requireObject(data.settings, 'Settings');
     const settings = data.settings || {};
-    for(const field of ['showGrid','snapToGrid','flowPanelOpen','presentationImagePanelOpen','showInactiveConnectionsInPresentation','showTokenMessageInPresentation','showProcessingActionInPresentation','loopAnimation','focusSelectedFlow']){
+    for(const field of ['showGrid','snapToGrid','flowPanelOpen','presentationImagePanelOpen','presentationPanelOpen','showInactiveConnectionsInPresentation','showTokenMessageInPresentation','showProcessingActionInPresentation','loopAnimation','focusSelectedFlow']){
       if(settings[field] !== undefined && typeof settings[field] !== 'boolean') throw new Error(`${field} must be true or false.`);
     }
-    for(const [field, allowed] of Object.entries({ diagramTheme:['technical','soft','monochrome','custom'], diagramPalette:['blue','teal','violet'], animationMode:['step','auto'], defaultShape:shapes, defaultConnectionStyle:routes, activeCanvasMode:['select','pan','connect'] })){
+    for(const [field, allowed] of Object.entries({ presentationPanelTab:['details','flow'], diagramTheme:['technical','soft','monochrome','custom'], diagramPalette:['blue','teal','violet'], animationMode:['step','auto'], defaultShape:shapes, defaultConnectionStyle:routes, activeCanvasMode:['select','pan','connect'] })){
       if(settings[field] !== undefined && !allowed.includes(settings[field])) throw new Error(`Unsupported ${field}: ${settings[field]}`);
     }
     const speed = settings.animationSpeed;
     if(speed !== undefined && !['slow','normal','fast'].includes(speed)) number(speed, 50, 'Animation speed', 1, 100);
     data.settings = { ...settings,
       zoom:number(settings.zoom, 1, 'Zoom', 0.2, 3.2), panX:number(settings.panX, 80, 'Pan x'), panY:number(settings.panY, 70, 'Pan y'),
-      flowPanelWidth:number(settings.flowPanelWidth, 390, 'Flow panel width', 280, 620) };
+      flowPanelWidth:number(settings.flowPanelWidth, 390, 'Flow panel width', 280, 620),
+      presentationPanelWidth:number(settings.presentationPanelWidth,320,'Presentation panel width',240,480) };
     data.schemaVersion = 1;
     // Selection and presentation are session state, never an instruction in a file.
     data.ui = { selectedComponentIds:[], selectedFlowId:null, expandedFlowId:null, presentationMode:false };

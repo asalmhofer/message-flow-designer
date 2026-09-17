@@ -21,7 +21,7 @@
   }
   function serializeSvg(svg){
     const clone=styledClone(svg);
-    clone.querySelectorAll('.flowSelectionOutline,.componentSelectionOutline,.resizeHandle,.selectionBox,.componentPort,.flowEndpointHandle,.flowBendHandle,.connectionDraftPreview,.connectionDraftDot,.endpointDragPreview,.endpointDragDot,.placementPreview').forEach(node => node.remove());
+    clone.querySelectorAll('.flowSelectionOutline,.componentSelectionOutline,.resizeHandle,.selectionBox,.componentPort,.quickConnect,.connectionTargetOutline,.connectedPreview,.flowEndpointHandle,.flowBendHandle,.connectionDraftPreview,.connectionDraftDot,.endpointDragPreview,.endpointDragDot,.placementPreview').forEach(node => node.remove());
     const width = Math.max(1, Math.round(svg.clientWidth));
     const height = Math.max(1, Math.round(svg.clientHeight));
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');

@@ -114,7 +114,7 @@
     }
     function story(frame){
       if(!showStory)return '';
-      const fs=frame.flows,name=fs.length>1?`${fs.length} messages together`:fs[0]?.messageText||snapshot.name;
+      const fs=frame.flows,name=[...new Set(fs.map(f=>f.messageText))].join(' | ')||snapshot.name;
       let markup=multiline(snapshot.name,32,30,1000,12,1,'font-weight="600" fill-opacity=".65"')+multiline(name,32,76,area.width,28,2,'font-weight="650"');
       markup+=text(fs.length===1?route(fs[0]):fs.map(f=>f.messageText).join(' · ').slice(0,110),32,130,13,'fill-opacity=".72"');
       const status=({transfer:'Sending',arrived:'Received',processing:'Processing',completed:'Finished',ready:'Diagram'})[frame.phase];

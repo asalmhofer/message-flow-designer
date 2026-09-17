@@ -1,0 +1,37 @@
+.quickConnect{visibility:hidden;cursor:crosshair;outline:none}
+.componentGroup:hover .quickConnect,.componentGroup.selected .quickConnect,.componentGroup:focus-within .quickConnect{visibility:visible}
+.quickConnect .quickConnectFace{fill:#f3f7ff;stroke:#8faee0;stroke-width:1}
+.quickConnect path{fill:none;stroke:#2865ce;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.quickConnect:hover .quickConnectFace,.quickConnect:focus-visible .quickConnectFace{fill:#dceaff;stroke:#2563eb;stroke-width:2}
+.connectionTargetOutline{fill:#2563eb0a;stroke:#2563eb;stroke-width:2;vector-effect:non-scaling-stroke;pointer-events:none}
+.connectedPreview{pointer-events:none}
+.connectedPreviewOutline{fill:none;stroke:#2563eb;stroke-width:1.5;stroke-dasharray:5 4;vector-effect:non-scaling-stroke}
+.connectedPickerBackdrop{position:fixed;inset:0;z-index:149;background:transparent}
+.connectedPickerBackdrop[hidden]{display:none}
+.connectedPicker{position:fixed;z-index:150;width:328px;max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);display:flex;flex-direction:column;background:#fff;border:1px solid #d5dfea;border-radius:14px;box-shadow:0 16px 52px #15243d30;color:#24334b;overflow:hidden}
+.connectedPicker[hidden]{display:none}
+.connectedPicker header{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 10px;gap:8px}
+.connectedEyebrow{font-size:9px;letter-spacing:.1em;font-weight:650;color:#788aa3}
+.connectedPicker h2{font-size:16px;margin:5px 0 0;font-weight:650}
+.connectedPicker header button{border:0;background:none;padding:6px}
+.connectedDirection{display:flex;align-items:center;gap:8px;margin:0 14px 12px;padding:7px 8px 7px 12px;border-radius:8px;background:#eef4ff;color:#3f618e;font-size:12px}
+.connectedDirection span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.connectedDirection button{padding:5px;background:#fff;border-color:#c9d9ef}
+.connectedDirection button[aria-pressed="true"]{background:#d9e8ff;border-color:#89a9db}
+.connectedSearch{display:flex;align-items:center;gap:7px;border:1px solid #d9e1ed;border-radius:8px;padding:0 9px;margin:0 14px 10px;color:#7487a2}
+.connectedSearch input{width:100%;min-width:0;height:36px;background:none;border:0;outline:none;font-size:12px}
+.connectedSearch:focus-within{border-color:#6d99df;box-shadow:0 0 0 2px #ebf2ff}
+.connectedCategories{display:flex;flex-wrap:wrap;gap:3px;padding:0 14px 10px}
+.connectedCategories button{font-size:11px;padding:6px 7px;border:0;background:#f3f5f8;color:#65758e}
+.connectedCategories button[aria-pressed="true"]{background:#e4efff;color:#245dc4}
+.connectedChoices{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:0 14px 14px;overflow:auto;min-height:0;max-height:278px}
+.connectedChoices button{min-height:72px;display:flex;flex-direction:column;align-items:flex-start;gap:7px;white-space:normal;text-align:left;font-size:11px;padding:9px 10px;border-color:#e0e6ef;background:#fff}
+.connectedChoices button:hover,.connectedChoices button[aria-pressed="true"]{background:#f2f7ff;border-color:#8bb0ec}
+.connectedChoices p{grid-column:1/-1;font-size:12px;line-height:1.5;color:#718096}
+.connectedGlyph svg{width:48px;height:30px;overflow:visible}
+.connectedGlyph svg *{vector-effect:non-scaling-stroke}
+.connectedPicker footer{border-top:1px solid #e8edf4;background:#f8fafc;color:#77859b;font-size:10px;padding:11px 14px}
+.connectedPicker :focus-visible{outline:2px solid #7b9fdd;outline-offset:2px}
+.connectedPicker input:focus-visible{outline:none;box-shadow:none}
+.nameMessageAction{position:fixed;z-index:45;font-size:11px;border-color:#bed0ec;color:#315f9e;background:#f2f7ff;box-shadow:0 3px 10px #25365013}
+.nameMessageAction[hidden]{display:none}

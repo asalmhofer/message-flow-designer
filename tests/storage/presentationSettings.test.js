@@ -4,7 +4,7 @@ import '../../src/storage/diagramDocument.js';
 import {diagram} from '../fixtures/diagram.js';
 
 const normalize=globalThis.MessageFlowDocuments.normalizeDiagram;
-for(const field of ['showTokenMessageInPresentation','showProcessingActionInPresentation']){
+for(const field of ['showTokenMessageInPresentation','showProcessingActionInPresentation','presentationPanelOpen']){
   test(`${field} persists independently and rejects malformed imports`,()=>{
     for(const value of [true,false]){
       const data=diagram();data.settings[field]=value;
@@ -17,3 +17,11 @@ for(const field of ['showTokenMessageInPresentation','showProcessingActionInPres
     }
   });
 }
+
+test('presentation panel width and tab persist independently from the editor panel and reject malformed values',()=>{
+  const data=diagram();Object.assign(data.settings,{flowPanelWidth:600,presentationPanelWidth:310,presentationPanelTab:'flow'});
+  const saved=normalize(JSON.parse(JSON.stringify(normalize(data))));
+  assert.equal(saved.settings.flowPanelWidth,600);assert.equal(saved.settings.presentationPanelWidth,310);assert.equal(saved.settings.presentationPanelTab,'flow');
+  for(const value of [null,'wide',239,481])assert.throws(()=>normalize({...data,settings:{...data.settings,presentationPanelWidth:value}}),/Presentation panel width/);
+  assert.throws(()=>normalize({...data,settings:{presentationPanelTab:'unknown'}}),/Unsupported presentationPanelTab/);
+});
