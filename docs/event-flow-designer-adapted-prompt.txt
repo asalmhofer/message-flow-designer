@@ -356,12 +356,14 @@ Users shall be able to:
 ### 7.3 Configurable Connection Style
 
 The application shall allow users to configure the visual style of message flow connections.
+Style can be changed with right click on connection or via a style menu in the toolbar.
 
 Supported connection styles:
 
 - **Straight**: a direct straight line between source and target component.
 - **Arc / Curved**: a smooth curved connection.
 - **Angular / Elbow**: an orthogonal connection with right-angled segments.
+- Default connection style shall be straight, but users may change it per message flow.
 
 Requirements:
 
