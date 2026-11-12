@@ -13,7 +13,7 @@
       <label class="exportField" id="exportVideoField">Video format<select id="exportVideoFormat"><option value="">Checking support…</option></select></label>
       <div id="exportAnimationSettings"><div class="exportSectionTitle">Animation</div><label class="exportField">Steps<select id="exportRange"><option value="all">Entire flow</option><option value="range">Selected range</option></select></label><div class="exportColumns" id="exportRangeFields" hidden><label class="exportField">From<select id="exportFrom"></select></label><label class="exportField">Through<select id="exportThrough"></select></label></div>
       <label class="exportField">Speed <output id="exportSpeedValue">50%</output><input id="exportSpeed" type="range" min="1" max="100" value="50" aria-label="Export speed"></label>
-      <div class="exportChecks"><label><input id="exportTokenNames" type="checkbox" checked>Message names beside tokens</label><label><input id="exportProcessing" type="checkbox">Show processing phase</label><small>When off, processing and its delay are skipped.</small><label><input id="exportInactive" type="checkbox" checked>Show inactive connections</label><label id="exportLoopField"><input id="exportLoop" type="checkbox" checked>Loop GIF</label></div>
+      <div class="exportChecks"><label><input id="exportTokenNames" type="checkbox" checked>Message names beside tokens</label><label class="exportField" id="exportTokenLabelSizeField">Message label size (px)<input id="exportTokenLabelSize" type="number" min="8" max="96" step="1" value="24" required aria-label="Message label size in pixels"></label><label><input id="exportProcessing" type="checkbox">Show processing phase</label><small>When off, processing and its delay are skipped.</small><label><input id="exportInactive" type="checkbox" checked>Show inactive connections</label><label id="exportLoopField"><input id="exportLoop" type="checkbox" checked>Loop GIF</label></div>
       <details class="exportAdvanced"><summary>Timing and motion</summary><div class="exportColumns"><label class="exportField">Frame rate<select id="exportFps"><option value="10">10 fps</option><option value="15">15 fps</option><option value="24">24 fps</option><option value="30">30 fps</option></select></label><label class="exportField">Hold final frame<select id="exportHold"><option value="0">None</option><option value="0.5">0.5 seconds</option><option value="1" selected>1 second</option><option value="2">2 seconds</option></select></label></div><label class="exportCheck"><input id="exportReduced" type="checkbox">Reduced motion</label></details></div>
       <p class="exportCapability" id="exportCapability"></p></form></div>
       <footer class="exportFooter"><div class="exportStatus"><span id="exportStatus" role="status">Ready to export</span><progress id="exportProgress" max="1" value="0" hidden></progress></div><button type="button" id="exportCancel">Close</button><button type="button" id="exportStart" class="primary">Export</button><a id="exportDownload" class="exportDownload" hidden>Download</a></footer>`;
@@ -28,7 +28,7 @@
       const width=format==='svg'?1280:Number($('exportSize').value);
       return {format,width,height:Math.round(width*9/16/2)*2,composition:$('exportComposition').value,framing:$('exportFraming').value,
         details:$('exportDetails').checked,images:$('exportImages').checked,start:ranged?Number($('exportFrom').value):0,end:ranged?Number($('exportThrough').value):Infinity,
-        speed:Number($('exportSpeed').value),processing:$('exportProcessing').checked,tokenNames:$('exportTokenNames').checked,inactive:$('exportInactive').checked,
+        speed:Number($('exportSpeed').value),processing:$('exportProcessing').checked,tokenNames:$('exportTokenNames').checked,tokenLabelSize:Number($('exportTokenLabelSize').value),inactive:$('exportInactive').checked,
         fps:Number($('exportFps').value),hold:Number($('exportHold').value),loop:$('exportLoop').checked,reducedMotion:$('exportReduced').checked,videoFormat:$('exportVideoFormat').value};
     }
     function stopPreview(){++previewRun;if(previewFrame)cancelAnimationFrame(previewFrame);previewFrame=null;$('exportPreviewPlay').setAttribute('aria-label','Play export preview');$('exportPreviewPlay').innerHTML=root.MessageFlowIcons.svg('play');}
@@ -41,6 +41,7 @@
     function controls(){
       $('exportAnimationSettings').hidden=!animated();$('exportPreviewControls').hidden=!animated()||!!objectUrl;
       $('exportVideoField').hidden=format!=='video';$('exportSizeField').hidden=format==='svg';$('exportLoopField').hidden=format!=='gif';
+      $('exportTokenLabelSizeField').hidden=!animated()||!$('exportTokenNames').checked;
       $('exportStoryOptions').hidden=$('exportComposition').value!=='presentation';
       $('exportRangeFields').hidden=$('exportRange').value!=='range';
       $('exportStart').textContent=`Export ${format==='video'?'video':format.toUpperCase()}`;

@@ -46,6 +46,7 @@
     const world=options.framing==='viewport'?snapshot.viewport:{x:sceneBounds.x-padding,y:sceneBounds.y-padding,width:sceneBounds.width+padding*2,height:sceneBounds.height+padding*2};
     const zoom=Math.min(area.width/world.width,area.height/world.height);
     const tx=area.x+(area.width-world.width*zoom)/2-world.x*zoom,ty=area.y+(area.height-world.height*zoom)/2-world.y*zoom;
+    const outputScale=zoom*options.width/1280;
     function route(f){return `${lookup.get(f.sourceComponentId)?.name||'Component'} → ${lookup.get(f.targetComponentId)?.name||'Component'}`;}
     function flowPath(f,active){
       const width=f.style?.thickness??1.7,color=f.style?.color||'#475569';
@@ -78,9 +79,13 @@
           const point=measures.get(f.id).getPointAtLength(f.length*(arrived?1:options.reducedMotion?0:progress));
           result+=`<circle class="exportToken" cx="${point.x}" cy="${point.y}" r="6" fill="#d98b16" stroke="#fff" stroke-width="2"/>`;
           if(options.tokenNames){
-            const lines=wrap(f.messageText||'Message',190,12,2),w=Math.max(90,...lines.map(line=>measure.measureText(line).width+24));
-            result+=rect(point.x-w/2,point.y+16,w,12+lines.length*17,'#fff','rx="6" stroke="#e5c68e"');
-            result+=lines.map((line,i)=>text(line,point.x,point.y+32+i*17,12,'text-anchor="middle"')).join('');
+            const fontSize=Math.max(1,Number(options.tokenLabelSize)||24)/outputScale;
+            const horizontalPadding=12/outputScale,verticalPadding=7/outputScale,lineHeight=fontSize*1.25;
+            const maxWidth=320/outputScale,lines=wrap(f.messageText||'Message',maxWidth-horizontalPadding*2,fontSize,2);
+            const width=Math.max(90/outputScale,...lines.map(line=>measure.measureText(line).width+horizontalPadding*2));
+            const height=verticalPadding*2+lines.length*lineHeight,top=point.y+16/outputScale;
+            result+=rect(point.x-width/2,top,width,height,'#fff','rx="6" stroke="#e5c68e"');
+            result+=lines.map((line,i)=>text(line,point.x,top+verticalPadding+fontSize+i*lineHeight,fontSize,'text-anchor="middle"')).join('');
           }
         }
         if(!options.reducedMotion && ((traveling&&frame.progress<.16)||arrived)){

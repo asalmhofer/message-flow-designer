@@ -7,7 +7,7 @@ The app runs entirely in the browser. It does not require a backend, database, n
 ## Features
 
 - Draw software components and package/group containers.
-- Connect components with straight, curved, or elbow message-flow arrows.
+- Connect components with straight (default), curved, or elbow message-flow arrows. Change a flow's style from the Style menu or by right-clicking its connection; without a selected flow, the Style menu sets the default for new connections.
 - Use dynamic connection ports and drag endpoints or bend handles.
 - Define ordered message-flow steps, messages, processing actions, notes, images, and timing.
 - Read connection labels on clear backgrounds, with automatic spacing and saved manual positions.
@@ -16,7 +16,7 @@ The app runs entirely in the browser. It does not require a backend, database, n
 - Present with a current-message heading, processing details and images, and a selectable flow overview.
 - Pause/resume playback and choose whether automatic playback loops.
 - Import/export diagrams as JSON.
-- Export diagrams as SVG or PNG, and animations as GIF, MP4 or WebM.
+- Export diagrams as SVG or PNG, and animations as GIF, MP4 or WebM. Animated exports let you set the integer message-label size in pixels (default 24 px); the chosen size stays readable at the selected output resolution.
 - Autosave state in browser local storage.
 - Restore the previous autosave when the latest copy is damaged, with recovery downloads and visible save errors.
 
