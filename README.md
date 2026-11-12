@@ -16,7 +16,7 @@ The app runs entirely in the browser. It does not require a backend, database, n
 - Present with a current-message heading, processing details and images, and a selectable flow overview.
 - Pause/resume playback and choose whether automatic playback loops.
 - Import/export diagrams as JSON.
-- Export diagrams as SVG or PNG, and animations as GIF, MP4 or WebM.
+- Export diagrams as SVG or PNG, and animations as GIF, MP4 or WebM. Animated exports let you set the integer message-label size in pixels (default 24 px); the chosen size stays readable at the selected output resolution.
 - Autosave state in browser local storage.
 - Restore the previous autosave when the latest copy is damaged, with recovery downloads and visible save errors.
 

@@ -36,8 +36,13 @@ test('one dialog adapts to all four formats, ranges keep groups together, and ed
   await seed(page);await page.locator('.componentGroup[data-id="service"] .componentShape').click();
   const before=await saved(page),selection=await page.locator('.componentGroup.selected').getAttribute('data-id');
   await openExport(page,'PNG');await expect(page.locator('#exportAnimationSettings')).toBeHidden();await expect(page.locator('#exportSize')).toBeVisible();
+  await expect(page.locator('#exportTokenLabelSizeField')).toBeHidden();
   await page.getByRole('button',{name:'SVG',exact:true}).click();await expect(page.locator('#exportSize')).toBeHidden();
   await page.getByRole('button',{name:'GIF',exact:true}).click();await expect(page.locator('#exportLoop')).toBeVisible();
+  await expect(page.locator('#exportTokenLabelSizeField')).toBeVisible();
+  await expect(page.locator('#exportTokenLabelSize')).toHaveAttribute('type','number');
+  await expect(page.locator('#exportTokenLabelSize')).toHaveAttribute('step','1');
+  await expect(page.locator('#exportTokenLabelSize')).toHaveValue('24');
   await page.locator('#exportRange').selectOption('range');await expect(page.locator('#exportFrom option')).toHaveCount(2);
   await expect(page.locator('#exportFrom option').first()).toContainText('1 + 2');
   await page.locator('#exportFrom').selectOption('1');await page.locator('#exportThrough').selectOption('0');
@@ -46,6 +51,16 @@ test('one dialog adapts to all four formats, ranges keep groups together, and ed
   const afterProcessing=await page.locator('#exportScrub').getAttribute('max');expect(Number(afterProcessing)-Number(beforeProcessing)).toBeCloseTo(.9,5);
   await page.keyboard.press('Escape');await expect(dialog(page)).not.toBeVisible();
   expect(await saved(page)).toBe(before);await expect(page.locator('.componentGroup.selected')).toHaveAttribute('data-id',selection);
+});
+
+test('animated export message label size updates the preview and hides when token names are disabled',async({page})=>{
+  await seed(page);await shortExport(page,'Video');
+  const preview=page.locator('#exportPreview');
+  const before=await preview.evaluate(canvas=>canvas.toDataURL());
+  await page.locator('#exportTokenLabelSize').fill('37');
+  await expect.poll(()=>preview.evaluate(canvas=>canvas.toDataURL())).not.toBe(before);
+  await page.locator('#exportTokenNames').uncheck();
+  await expect(page.locator('#exportTokenLabelSizeField')).toBeHidden();
 });
 
 test('GIF downloads decode into distinct timed frames, loop, and preserve the diagram',async({page},info)=>{
