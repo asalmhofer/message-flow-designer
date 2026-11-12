@@ -10,6 +10,8 @@ The primary browser key remains `event-flow-designer-state-v1`. `.backup` stores
 
 Message flows may include `labelOffset: { "x": 40, "y": -24 }`. The finite coordinates are offsets in diagram units from the connector's default label anchor, not absolute canvas coordinates. Missing or null offsets use automatic placement; automatic collision adjustments are calculated when rendering and are not saved. Manual offsets survive direct v1 import/export and undo/redo. The optional boolean `settings.focusSelectedFlow` controls the editor's focus view. Presentation preview position and playback timers are session state; autosave retains the editing viewport during presentation.
 
+New message flows use `settings.defaultConnectionStyle`, which defaults to `"straight"` and can be changed from the Style menu when no flow is selected. Each flow can independently use `"straight"`, `"arc"`, or `"angular"`; the Style menu and the connection context menu update the selected flow. For backward compatibility, imported legacy flows without a `connectionStyle` retain the historical `"arc"` routing.
+
 ## Presentation playback (version 1)
 
 The optional presentation panel settings are `presentationPanelOpen` (boolean, defaults to `false`), `presentationPanelWidth` (240–480 pixels, defaults to 320) and `presentationPanelTab` (`"details"` or `"flow"`, defaults to `"details"`). They persist independently of the editor's panel settings. The earlier `presentationImagePanelOpen` field remains accepted for compatibility but does not control the new panel. Automatic fit, full-screen ownership and presentation zoom/pan are session state; the saved viewport remains the editor's viewport.

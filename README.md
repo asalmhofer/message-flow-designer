@@ -7,7 +7,7 @@ The app runs entirely in the browser. It does not require a backend, database, n
 ## Features
 
 - Draw software components and package/group containers.
-- Connect components with straight, curved, or elbow message-flow arrows.
+- Connect components with straight (default), curved, or elbow message-flow arrows. Change a flow's style from the Style menu or by right-clicking its connection; without a selected flow, the Style menu sets the default for new connections.
 - Use dynamic connection ports and drag endpoints or bend handles.
 - Define ordered message-flow steps, messages, processing actions, notes, images, and timing.
 - Read connection labels on clear backgrounds, with automatic spacing and saved manual positions.

@@ -178,7 +178,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
         loopAnimation: true,
         autoContinueAfterArrival: false,
         autoContinueDelay: 1200,
-        defaultConnectionStyle: 'arc',
+        defaultConnectionStyle: 'straight',
         showGrid: true,
         snapToGrid: true,
         focusSelectedFlow: false,
@@ -1798,7 +1798,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
       actionText: '',
       processingImageDataUrl: '',
       notes: '',
-      connectionStyle: connectionStyle || state.settings.defaultConnectionStyle || 'arc',
+      connectionStyle: connectionStyle || state.settings.defaultConnectionStyle || 'straight',
       controlPoint: null,
       style: { color:'#64748b', thickness:1.7, textColor:'#202b3c' }
     };
@@ -2867,7 +2867,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     connectSourceId = componentId;
     connectSourcePortId = portId || nearestPortId(component, center(component));
     placement = null;
-    connectChosenStyle = state.settings.defaultConnectionStyle || 'arc';
+    connectChosenStyle = state.settings.defaultConnectionStyle || 'straight';
     connectPreviewPoint = portPosition(component, connectSourcePortId);
     state.settings.activeCanvasMode = 'connect';
     state.ui.selectedComponentIds = [componentId];
@@ -3541,6 +3541,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     e.preventDefault();
     if(cid && !isSelectedComponent(cid)) selectComponent(cid, false);
     if(fid) selectFlow(fid);
+    $('contextConnectionStyles').hidden = !fid;
     els.contextMenu.style.display = 'block';
     els.contextMenu.style.left = `${e.clientX}px`;
     els.contextMenu.style.top = `${e.clientY}px`;
@@ -3548,6 +3549,18 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
   }
 
   function closeContextMenu(){ els.contextMenu.style.display = 'none'; }
+
+  function applyConnectionStyle(style, flow=selectedFlow()){
+    if(!['straight','arc','angular'].includes(style)) return;
+    if(flow){
+      flow.connectionStyle = style;
+      pushHistory('connection style');
+    }else{
+      state.settings.defaultConnectionStyle = style;
+      saveLocal(true);
+    }
+    renderAll();
+  }
 
   function togglePresentation(force){
     const next = typeof force === 'boolean' ? force : !state.ui.presentationMode;
@@ -3694,7 +3707,7 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
       renderAll();
     });
     els.importInput.addEventListener('change', () => { const file = els.importInput.files?.[0]; if(file) importJson(file); els.importInput.value = ''; });
-    if(els.connectionStyleSelect) els.connectionStyleSelect.addEventListener('change', () => { const flow = selectedFlow(); if(flow){ flow.connectionStyle = els.connectionStyleSelect.value; pushHistory('connection style'); } else state.settings.defaultConnectionStyle = els.connectionStyleSelect.value; saveLocal(true); renderAll(); });
+    if(els.connectionStyleSelect) els.connectionStyleSelect.addEventListener('change', () => applyConnectionStyle(els.connectionStyleSelect.value));
     els.modeSelect?.addEventListener('change', (e) => {
       const input = e.target.closest?.('input[name="animationMode"]');
       if(!input) return;
@@ -3770,6 +3783,13 @@ globalThis.bootstrapMessageFlow = function bootstrapMessageFlow(){
     $('ctxBringFront').addEventListener('click', () => { closeContextMenu(); bringToFront(); });
     $('ctxSendBack').addEventListener('click', () => { closeContextMenu(); sendToBack(); });
     $('ctxDelete').addEventListener('click', () => { closeContextMenu(); deleteSelection(); });
+    $('contextConnectionStyles').addEventListener('click', e => {
+      const button = e.target.closest('[data-connection-style]');
+      if(!button) return;
+      const flow = selectedFlow();
+      closeContextMenu();
+      if(flow) applyConnectionStyle(button.dataset.connectionStyle, flow);
+    });
   }
 
   function applyColor(kind, color){

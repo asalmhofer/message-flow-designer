@@ -6,7 +6,7 @@ export function defaultPreferences(){
     snapToGrid: true,
     animationSpeed: 'normal',
     animationMode: 'auto',
-    defaultConnectorType: 'arc',
+    defaultConnectorType: 'straight',
     showInactiveConnectorsInPresentation: true,
     presentationImagePanelOpen: true,
   };

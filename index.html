@@ -43,6 +43,8 @@
     </details>
     <details class="menuGroup themeMenu editOnly" id="themeMenu"><summary aria-label="Diagram style"><span data-icon="palette"></span>Style <span data-icon="down"></span></summary><div class="menuPanel themePanel">
       <div class="themeHeading">Diagram style</div><p>A coordinated style for the whole diagram and its exports.</p>
+      <label for="connectionStyleSelect">Connection style</label><select id="connectionStyleSelect" aria-label="Connection style"><option value="straight">Straight</option><option value="arc">Curved</option><option value="angular">Elbow</option></select>
+      <span class="themeNote">Applies to the selected flow, or sets the default for new flows.</span>
       <label for="diagramTheme">Theme</label><select id="diagramTheme"><option value="technical">Technical</option><option value="soft">Soft colour</option><option value="monochrome">Monochrome</option><option value="custom" disabled>Custom / existing colours</option></select>
       <label for="diagramPalette">Colour palette</label><select id="diagramPalette"><option value="blue">Slate blue</option><option value="teal">Sage &amp; teal</option><option value="violet">Soft violet</option></select><span class="themeNote">Theme changes can be undone.</span>
     </div></details>
@@ -163,6 +165,13 @@
       </div>
       <div class="toast" id="toast"></div>
       <div class="contextMenu" id="contextMenu" role="menu">
+        <div id="contextConnectionStyles" class="contextConnectionStyles" hidden>
+          <span class="contextMenuHeading">Connection style</span>
+          <button type="button" role="menuitem" data-connection-style="straight">Straight</button>
+          <button type="button" role="menuitem" data-connection-style="arc">Curved</button>
+          <button type="button" role="menuitem" data-connection-style="angular">Elbow</button>
+          <div class="menuDivider"></div>
+        </div>
         <button id="ctxDuplicate">Duplicate</button>
         <button id="ctxBringFront">Bring to front</button>
         <button id="ctxSendBack">Send to back</button>
