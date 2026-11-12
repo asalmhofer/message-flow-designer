@@ -21,7 +21,7 @@ export function createConnector(data = {}){
     targetComponentId: data.targetComponentId,
     sourcePort: data.sourcePort ?? data.sourcePortId ?? null,
     targetPort: data.targetPort ?? data.targetPortId ?? null,
-    routingType: data.routingType || data.connectionStyle || 'arc',
+    routingType: data.routingType || data.connectionStyle || 'straight',
     bendPoints: Array.isArray(data.bendPoints) ? data.bendPoints.map(normalizePoint) : (data.controlPoint ? [normalizePoint(data.controlPoint)] : []),
     labelPosition: data.labelPosition ? normalizePoint(data.labelPosition) : null,
     style: {

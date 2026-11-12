@@ -20,6 +20,12 @@ test('current diagram JSON round-trips without losing features or mutating input
   assert.equal(normalized.messageFlows[0].processingImageDataUrl, input.messageFlows[0].processingImageDataUrl);
   assert.deepEqual(normalized.messageFlows[0].controlPoint, input.messageFlows[0].controlPoint);
 });
+test('legacy flows without a connection style keep their curved routing', () => {
+  const input = diagram();
+  delete input.messageFlows[0].connectionStyle;
+  const normalized = normalizeDiagram(input);
+  assert.equal(normalized.messageFlows[0].connectionStyle, 'arc');
+});
 test('modular import preserves text, hidden connectors, viewport and processing images', () => {
   const input = diagram();
   const result = importProjectFromText(JSON.stringify(input));
